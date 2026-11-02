@@ -43,8 +43,6 @@ Cada usuario pertenece a un área municipal.
 - El personal de Sistemas tiene permisos según su rol.
 - Las contraseñas no se almacenarán en texto plano.
 
-## Estado
-
 ## Tabla 3: incidencias
 
 Almacena las incidencias tecnológicas reportadas por los usuarios autorizados de las áreas municipales.
@@ -87,8 +85,6 @@ Almacena las incidencias tecnológicas reportadas por los usuarios autorizados d
 - Los archivos adjuntos se registrarán en la tabla evidencias.
 - El historial de cambios se almacenará por separado.
 - El cierre deberá registrar fecha y usuario responsable.
-
-## Estado del diseño de incidencias
 
 Estructura preliminar del MVP. Pendiente de implementar las restricciones y claves foráneas mediante SQL.
 
@@ -154,24 +150,6 @@ Registra las actividades técnicas realizadas durante la atención de incidencia
 - La solución aplicada se registrará cuando corresponda.
 - Si es_solucion_final es TRUE, debe existir una solución_aplicada.
 - Las intervenciones anteriores se conservarán para consulta.
-
-## Estado del diseño
-
-Tablas documentadas hasta el momento:
-
-1. areas
-2. usuarios
-3. incidencias
-4. asignaciones
-5. intervenciones
-
-Pendientes:
-
-6. verificaciones
-7. evidencias
-8. historial_incidencias
-
-El modelo continúa en fase de diseño.
 
 
 ## Tabla 6: verificaciones
