@@ -173,3 +173,110 @@ Pendientes:
 
 El modelo continúa en fase de diseño.
 
+
+## Tabla 6: verificaciones
+
+Almacena las respuestas del usuario autorizado respecto a la solución de una incidencia.
+
+| Campo | Tipo | Restricción |
+|---|---|---|
+| id | UUID | PK, NOT NULL |
+| incidencia_id | UUID | FK a incidencias.id, NOT NULL |
+| usuario_id | UUID | FK a usuarios.id, NOT NULL |
+| resultado | VARCHAR(20) | NOT NULL |
+| observaciones | TEXT | NULL |
+| fecha_verificacion | TIMESTAMPTZ | NOT NULL |
+
+### Relaciones
+
+- Una incidencia puede tener varias verificaciones.
+- Cada verificación pertenece a una incidencia.
+- Cada verificación identifica al usuario que respondió.
+
+### Reglas de negocio
+
+- Los resultados permitidos serán Conformidad y Observación.
+- Solo un representante autorizado podrá registrar la verificación.
+- Si el resultado es Observación, debe indicar el motivo.
+- La respuesta debe conservarse en el historial.
+- La condición SIN OBSERVACIONES no equivale a conformidad expresa ni genera un cierre automático.
+
+## Tabla 7: evidencias
+
+Almacena las referencias a fotografías y documentos adjuntos a las incidencias.
+
+| Campo | Tipo | Restricción |
+|---|---|---|
+| id | UUID | PK, NOT NULL |
+| incidencia_id | UUID | FK a incidencias.id, NOT NULL |
+| usuario_id | UUID | FK a usuarios.id, NOT NULL |
+| nombre_archivo | VARCHAR(255) | NOT NULL |
+| tipo_archivo | VARCHAR(100) | NOT NULL |
+| tamano_bytes | BIGINT | NOT NULL |
+| ruta_archivo | TEXT | NOT NULL |
+| fecha_registro | TIMESTAMPTZ | NOT NULL |
+
+### Relaciones
+
+- Una incidencia puede tener varias evidencias.
+- Cada evidencia pertenece a una incidencia.
+- Cada evidencia identifica al usuario que la adjuntó.
+
+### Reglas de negocio
+
+- Los archivos adjuntos serán opcionales.
+- Se admitirán JPG, PNG, WebP y PDF.
+- El tamaño máximo propuesto será de 10 MB por archivo.
+- La base de datos almacenará referencias y metadatos, no los archivos binarios.
+- Solo usuarios autorizados podrán consultar los archivos.
+- No se utilizarán enlaces públicos permanentes para documentos privados.
+
+## Tabla 8: historial_incidencias
+
+Registra cronológicamente las acciones relevantes realizadas sobre cada incidencia.
+
+| Campo | Tipo | Restricción |
+|---|---|---|
+| id | UUID | PK, NOT NULL |
+| incidencia_id | UUID | FK a incidencias.id, NOT NULL |
+| usuario_id | UUID | FK a usuarios.id, NOT NULL |
+| accion | VARCHAR(100) | NOT NULL |
+| descripcion | TEXT | NOT NULL |
+| fecha_registro | TIMESTAMPTZ | NOT NULL |
+
+### Relaciones
+
+- Una incidencia puede tener múltiples registros de historial.
+- Cada registro identifica al usuario responsable.
+- Cada registro pertenece a una incidencia existente.
+
+### Reglas de negocio
+
+- Registrar creación, asignación, cambio de prioridad, intervención, verificación y cierre.
+- Conservar el orden cronológico de los eventos.
+- No permitir eliminar o modificar el historial mediante las funciones ordinarias del sistema.
+- Registrar automáticamente la fecha y hora.
+- El historial será consultado según los permisos del usuario.
+
+## Estado del modelo de datos
+
+Se han identificado las ocho tablas principales del MVP:
+
+1. areas
+2. usuarios
+3. incidencias
+4. asignaciones
+5. intervenciones
+6. verificaciones
+7. evidencias
+8. historial_incidencias
+
+El diccionario de datos queda documentado como propuesta técnica inicial.
+
+Pendiente:
+- Revisar coherencia y relaciones.
+- Elaborar diagrama entidad-relación.
+- Definir restricciones SQL.
+- Implementar tablas en PostgreSQL.
+- Validar el modelo con datos de prueba.
+
