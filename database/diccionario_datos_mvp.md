@@ -94,4 +94,82 @@ Estructura preliminar del MVP. Pendiente de implementar las restricciones y clav
 
 Diseño preliminar de las tablas areas y usuarios.
 
-Pendiente: definir el mecanismo de autenticación y completar las demás entidades antes de generar el SQL.
+
+## Tabla 4: asignaciones
+
+Registra la asignación y reasignación de incidencias al personal de Sistemas.
+
+| Campo | Tipo | Restricción |
+|---|---|---|
+| id | UUID | PK, NOT NULL |
+| incidencia_id | UUID | FK a incidencias.id, NOT NULL |
+| tecnico_id | UUID | FK a usuarios.id, NOT NULL |
+| asignado_por_id | UUID | FK a usuarios.id, NOT NULL |
+| fecha_asignacion | TIMESTAMPTZ | NOT NULL |
+| fecha_fin | TIMESTAMPTZ | NULL |
+| motivo_reasignacion | TEXT | NULL |
+
+### Relaciones
+
+- Una incidencia puede tener varias asignaciones a lo largo del tiempo.
+- Cada asignación corresponde a un integrante de Sistemas.
+- Cada asignación registra al usuario que la realizó.
+
+### Reglas de negocio
+
+- Una incidencia tendrá como máximo una asignación activa.
+- Una asignación activa tendrá fecha_fin en NULL.
+- Al reasignar, se finalizará la asignación anterior.
+- Las asignaciones anteriores se conservarán.
+- Solo los usuarios autorizados podrán asignar o reasignar incidencias.
+
+## Tabla 5: intervenciones
+
+Registra las actividades técnicas realizadas durante la atención de incidencias.
+
+| Campo | Tipo | Restricción |
+|---|---|---|
+| id | UUID | PK, NOT NULL |
+| incidencia_id | UUID | FK a incidencias.id, NOT NULL |
+| tecnico_id | UUID | FK a usuarios.id, NOT NULL |
+| diagnostico | TEXT | NOT NULL |
+| acciones_realizadas | TEXT | NOT NULL |
+| duracion_minutos | INTEGER | NULL |
+| solucion_aplicada | TEXT | NULL |
+| es_solucion_final | BOOLEAN | NOT NULL, DEFAULT FALSE |
+| fecha_registro | TIMESTAMPTZ | NOT NULL |
+
+### Relaciones
+
+- Una incidencia puede tener varias intervenciones.
+- Cada intervención es registrada por un integrante autorizado de Sistemas.
+- Un integrante puede registrar intervenciones en diferentes incidencias.
+
+### Reglas de negocio
+
+- Cada intervención debe pertenecer a una incidencia existente.
+- Se registrará quién realizó la intervención.
+- El diagnóstico y las acciones realizadas serán obligatorios.
+- La duración, cuando se registre, no podrá ser negativa.
+- La solución aplicada se registrará cuando corresponda.
+- Si es_solucion_final es TRUE, debe existir una solución_aplicada.
+- Las intervenciones anteriores se conservarán para consulta.
+
+## Estado del diseño
+
+Tablas documentadas hasta el momento:
+
+1. areas
+2. usuarios
+3. incidencias
+4. asignaciones
+5. intervenciones
+
+Pendientes:
+
+6. verificaciones
+7. evidencias
+8. historial_incidencias
+
+El modelo continúa en fase de diseño.
+
