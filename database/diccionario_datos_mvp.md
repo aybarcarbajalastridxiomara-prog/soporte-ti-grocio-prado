@@ -104,6 +104,7 @@ Registra la asignación y reasignación de incidencias al personal de Sistemas.
 | fecha_asignacion | TIMESTAMPTZ | NOT NULL |
 | fecha_fin | TIMESTAMPTZ | NULL |
 | motivo_reasignacion | TEXT | NULL |
+| origen_asignacion	| VARCHAR(20)	| NOT NULL; valores JEFATURA o AUTOTOMA | 
 
 ### Relaciones
 
@@ -118,6 +119,20 @@ Registra la asignación y reasignación de incidencias al personal de Sistemas.
 - Al reasignar, se finalizará la asignación anterior.
 - Las asignaciones anteriores se conservarán.
 - Solo los usuarios autorizados podrán asignar o reasignar incidencias.
+
+### Reglas de asignación y toma de incidencias
+
+- El jefe de Sistemas puede asignar o reasignar incidencias a integrantes autorizados de Sistemas.
+- El asistente y el practicante pueden tomar únicamente incidencias que no tengan una asignación activa.
+- Al tomar una incidencia, el técnico que realiza la acción se registra como responsable.
+- El campo origen_asignacion identifica JEFATURA o AUTOTOMA.
+- Cuando el origen sea AUTOTOMA, tecnico_id y asignado_por_id corresponderán al mismo usuario.
+- Una incidencia solo puede tener una asignación activa a la vez.
+- El jefe podrá reasignar una incidencia, conservando el historial y registrando el motivo.
+- Tomar una incidencia no modifica automáticamente su prioridad.
+- La operación de toma deberá impedir que dos integrantes asuman simultáneamente la misma incidencia.
+- No será necesario registrar la ausencia o disponibilidad del jefe.
+
 
 ## Tabla 5: intervenciones
 
