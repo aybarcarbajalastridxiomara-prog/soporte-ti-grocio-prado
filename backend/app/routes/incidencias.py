@@ -1,5 +1,5 @@
 
-from datetime import datetime
+from datetime import date, datetime, time
 from uuid import UUID
 
 from fastapi import (
@@ -44,6 +44,37 @@ class IncidenciaResumen(BaseModel):
     estado: EstadoIncidencia
     prioridad: str | None
     fecha_registro: datetime
+
+class IncidenciaDetalle(BaseModel):
+    """Informacion completa de una incidencia."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    codigo: str
+    area_id: UUID
+    reportante_id: UUID
+
+    asunto: str
+    descripcion: str
+
+    categoria: str | None
+    equipo_sistema_afectado: str | None
+    ubicacion: str | None
+    impacto: str | None
+
+    fecha_inicio_problema: date | None
+    hora_inicio_problema: time | None
+
+    incidencia_anterior_id: UUID | None
+    detalle_reincidencia: str | None
+
+    estado: EstadoIncidencia
+    prioridad: str | None
+
+    fecha_registro: datetime
+    fecha_cierre: datetime | None
+    cerrado_por_usuario_id: UUID | None
 
 
 @router.get(
@@ -214,3 +245,48 @@ def registrar_incidencia(
     except Exception:
         db.rollback()
         raise
+
+
+
+@router.get(
+    "/{incidencia_id}",
+    response_model=IncidenciaDetalle,
+    summary="Consultar detalle de una incidencia",
+)
+def consultar_detalle_incidencia(
+    incidencia_id: UUID,
+    usuario_actual: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Consulta una incidencia mediante su identificador."""
+
+    roles_validos = {
+        "JEFE",
+        "ASISTENTE",
+        "PRACTICANTE",
+        "REPRESENTANTE",
+    }
+
+    if usuario_actual.rol not in roles_validos:
+        raise HTTPException(
+            status_code=403,
+            detail="No tiene permiso para consultar incidencias.",
+        )
+
+    incidencia = db.get(Incidencia, incidencia_id)
+
+    if incidencia is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Incidencia no encontrada.",
+        )
+
+    # Los representantes solo consultan su propia area.
+    if usuario_actual.rol == "REPRESENTANTE":
+        if incidencia.area_id != usuario_actual.area_id:
+            raise HTTPException(
+                status_code=404,
+                detail="Incidencia no encontrada.",
+            )
+
+    return incidencia
