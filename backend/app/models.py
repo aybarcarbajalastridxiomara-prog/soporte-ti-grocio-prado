@@ -1,11 +1,12 @@
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
     Date,
+    Time,
     DateTime,
     ForeignKey,
     Integer,
@@ -98,6 +99,20 @@ class Incidencia(Base):
     fecha_inicio_problema: Mapped[date | None] = mapped_column(
         Date
     )
+    
+    hora_inicio_problema: Mapped[time | None] = mapped_column(
+        Time(timezone=False)
+    )
+
+    incidencia_anterior_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("incidencias.id", ondelete="RESTRICT"),
+    )
+
+    detalle_reincidencia: Mapped[str | None] = mapped_column(
+        Text
+    )
+
     estado: Mapped[str] = mapped_column(
         String(20), server_default=text("'Pendiente'")
     )
