@@ -49,8 +49,8 @@ jobs:
           rutas = set(api.openapi()["paths"])
           
           assert "/" in rutas
-          assert "/api/health" in rutas
-          assert "/docs" in rutas
+          assert "/api/health" in rutas     
+          assert api.docs_url == "/docs"
           assert "/api/me" in rutas
 
 
