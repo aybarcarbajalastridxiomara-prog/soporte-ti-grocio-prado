@@ -345,3 +345,137 @@ jobs:
               api.dependency_overrides.clear()
           PY
 
+          
+      - name: Probar detalle de incidencias
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from datetime import date, datetime, time, timezone
+          from types import SimpleNamespace
+          from uuid import uuid4
+
+          from fastapi.testclient import TestClient
+
+          from app.main import app as api
+          from app.auth import get_current_user
+          from app.db import get_db
+          from app.models import Incidencia
+
+
+          area_tesoreria = uuid4()
+          area_logistica = uuid4()
+
+          ticket = SimpleNamespace(
+              id=uuid4(),
+              codigo="INC-2026-000001",
+              area_id=area_tesoreria,
+              reportante_id=uuid4(),
+              asunto="Impresora no funciona",
+              descripcion="No imprime documentos.",
+              categoria="Equipos perifericos",
+              equipo_sistema_afectado="Impresora HP",
+              ubicacion="Oficina de Tesoreria",
+              impacto="Parcialmente",
+              fecha_inicio_problema=date(2026, 11, 5),
+              hora_inicio_problema=time(8, 30),
+              incidencia_anterior_id=None,
+              detalle_reincidencia=None,
+              estado="Cerrado",
+              prioridad="Media",
+              fecha_registro=datetime.now(timezone.utc),
+              fecha_cierre=datetime.now(timezone.utc),
+              cerrado_por_usuario_id=uuid4(),
+          )
+
+
+          class BaseDatosSimulada:
+              def get(self, modelo, identificador):
+                  assert modelo is Incidencia
+                  if identificador == ticket.id:
+                      return ticket
+                  return None
+
+
+          def perfil(rol, area):
+              return SimpleNamespace(
+                  id=uuid4(),
+                  rol=rol,
+                  area_id=area,
+              )
+
+
+          try:
+              with TestClient(api) as cliente:
+                  ruta = f"/api/incidencias/{ticket.id}"
+
+                  # Sin autenticacion: acceso denegado.
+                  respuesta = cliente.get(ruta)
+                  assert respuesta.status_code == 401
+
+                  api.dependency_overrides[get_db] = (
+                      lambda: BaseDatosSimulada()
+                  )
+
+                  # Tesoreria consulta su ticket cerrado.
+                  api.dependency_overrides[get_current_user] = (
+                      lambda: perfil(
+                          "REPRESENTANTE", area_tesoreria
+                      )
+                  )
+
+                  respuesta = cliente.get(ruta)
+                  assert respuesta.status_code == 200, (
+                      respuesta.text
+                  )
+
+                  datos = respuesta.json()
+                  assert datos["id"] == str(ticket.id)
+                  assert datos["codigo"] == ticket.codigo
+                  assert datos["estado"] == "Cerrado"
+                  assert datos["asunto"] == ticket.asunto
+
+                  # Otra area no puede consultar el ticket.
+                  api.dependency_overrides[get_current_user] = (
+                      lambda: perfil(
+                          "REPRESENTANTE", area_logistica
+                      )
+                  )
+
+                  respuesta = cliente.get(ruta)
+                  assert respuesta.status_code == 404
+
+                  # El jefe de Sistemas puede consultarlo.
+                  api.dependency_overrides[get_current_user] = (
+                      lambda: perfil("JEFE", area_logistica)
+                  )
+
+                  respuesta = cliente.get(ruta)
+                  assert respuesta.status_code == 200
+
+                  # Una incidencia inexistente devuelve 404.
+                  respuesta = cliente.get(
+                      f"/api/incidencias/{uuid4()}"
+                  )
+                  assert respuesta.status_code == 404
+
+                  # Identificadores invalidos devuelven 422.
+                  respuesta = cliente.get(
+                      "/api/incidencias/identificador-invalido"
+                  )
+                  assert respuesta.status_code == 422
+
+                  # Un rol no autorizado es rechazado.
+                  api.dependency_overrides[get_current_user] = (
+                      lambda: perfil("VISITANTE", area_tesoreria)
+                  )
+
+                  respuesta = cliente.get(ruta)
+                  assert respuesta.status_code == 403
+
+              print("Pruebas de detalle de incidencias: OK")
+
+          finally:
+              api.dependency_overrides.clear()
+          PY
+
+
