@@ -1,6 +1,9 @@
 
 from fastapi import FastAPI
 
+from app.routes.usuarios import router as usuarios_router
+
+
 app = FastAPI(
     title="Sistema de Gestión de Incidencias - Soporte TI",
     description=(
@@ -10,6 +13,10 @@ app = FastAPI(
     ),
     version="0.1.0",
 )
+
+
+# Registrar los módulos de nuestra API
+app.include_router(usuarios_router)
 
 
 @app.get("/")
