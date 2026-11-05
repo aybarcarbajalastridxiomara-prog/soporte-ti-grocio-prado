@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    FetchedValue,
     Date,
     Time,
     DateTime,
@@ -13,6 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     text,
+
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -79,9 +81,14 @@ class Incidencia(Base):
         primary_key=True,
         server_default=text("gen_random_uuid()"),
     )
+    
     codigo: Mapped[str] = mapped_column(
-        String(25), unique=True
+        String(25),
+        unique=True,
+        nullable=False,
+        server_default=FetchedValue(),
     )
+
     area_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("areas.id")
     )
