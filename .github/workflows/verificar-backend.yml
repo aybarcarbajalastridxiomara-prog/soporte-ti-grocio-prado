@@ -191,4 +191,157 @@ jobs:
               api.dependency_overrides.clear()
           PY
 
+          
+      - name: Probar registro de incidencias
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from datetime import datetime, timezone
+          from types import SimpleNamespace
+          from uuid import uuid4
+
+          from fastapi.testclient import TestClient
+
+          from app.main import app as api
+          from app.auth import get_current_user
+          from app.db import get_db
+          from app.models import Incidencia, HistorialIncidencia
+
+
+          class BaseDatosSimulada:
+              def __init__(self):
+                  self.registros = []
+                  self.confirmado = False
+
+              def add(self, objeto):
+                  self.registros.append(objeto)
+
+              def flush(self):
+                  for objeto in self.registros:
+                      if isinstance(objeto, Incidencia):
+                          if objeto.id is None:
+                              objeto.id = uuid4()
+                              objeto.codigo = "INC-2026-000001"
+                              objeto.fecha_registro = (
+                                  datetime.now(timezone.utc)
+                              )
+
+              def get(self, modelo, identificador):
+                  return None
+
+              def commit(self):
+                  self.confirmado = True
+
+              def rollback(self):
+                  self.confirmado = False
+
+
+          area = uuid4()
+          usuario = SimpleNamespace(
+              id=uuid4(),
+              area_id=area,
+              rol="REPRESENTANTE",
+          )
+
+          db = BaseDatosSimulada()
+
+          datos = {
+              "asunto": "Impresora no funciona",
+              "descripcion": "No imprime documentos.",
+              "impacto": "Parcialmente",
+              "fecha_inicio_problema": "2026-11-05",
+              "hora_inicio_problema": "08:30:00",
+          }
+
+          try:
+              with TestClient(api) as cliente:
+
+                  # Sin sesion no se puede registrar.
+                  respuesta = cliente.post(
+                      "/api/incidencias", json=datos
+                  )
+                  assert respuesta.status_code == 401
+
+                  api.dependency_overrides[get_db] = (
+                      lambda: db
+                  )
+
+                  # Personal de Sistemas no registra tickets.
+                  for rol in (
+                      "JEFE", "ASISTENTE", "PRACTICANTE"
+                  ):
+                      api.dependency_overrides[
+                          get_current_user
+                      ] = lambda rol=rol: SimpleNamespace(
+                          id=usuario.id,
+                          area_id=area,
+                          rol=rol,
+                      )
+
+                      respuesta = cliente.post(
+                          "/api/incidencias", json=datos
+                      )
+                      assert respuesta.status_code == 403
+
+                  api.dependency_overrides[
+                      get_current_user
+                  ] = lambda: usuario
+
+                  # Rechazar estado y prioridad enviados.
+                  modificados = {
+                      **datos,
+                      "estado": "Cerrado",
+                      "prioridad": "Alta",
+                  }
+
+                  respuesta = cliente.post(
+                      "/api/incidencias",
+                      json=modificados,
+                  )
+                  assert respuesta.status_code == 422
+
+                  # Reincidencia sin referencia.
+                  respuesta = cliente.post(
+                      "/api/incidencias",
+                      json={**datos, "reincidente": True},
+                  )
+                  assert respuesta.status_code == 422
+
+                  # Registro correcto.
+                  respuesta = cliente.post(
+                      "/api/incidencias", json=datos
+                  )
+
+                  assert respuesta.status_code == 201, (
+                      respuesta.text
+                  )
+
+                  resultado = respuesta.json()
+
+                  assert resultado["estado"] == "Pendiente"
+                  assert resultado["prioridad"] is None
+                  assert resultado["area_id"] == str(area)
+                  assert db.confirmado is True
+
+                  tickets = [
+                      objeto for objeto in db.registros
+                      if isinstance(objeto, Incidencia)
+                  ]
+
+                  historial = [
+                      objeto for objeto in db.registros
+                      if isinstance(objeto, HistorialIncidencia)
+                  ]
+
+                  assert len(tickets) == 1
+                  assert len(historial) == 1
+                  assert tickets[0].reportante_id == usuario.id
+                  assert historial[0].accion == "CREACION"
+                  assert historial[0].incidencia_id == tickets[0].id
+
+              print("Pruebas de registro de incidencias: OK")
+
+          finally:
+              api.dependency_overrides.clear()
+          PY
 
