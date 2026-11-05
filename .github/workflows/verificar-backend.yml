@@ -38,7 +38,7 @@ jobs:
         working-directory: backend
         run: |
           python - <<'PY'
-          from app.main import app
+          from app.main import app as api
           from app.schemas import IncidenciaCrear
 
           import app.auth
@@ -46,8 +46,8 @@ jobs:
           import app.db
           import app.models
 
-          rutas = {ruta.path for ruta in app.routes}
-
+          rutas = {ruta.path for ruta in api.routes}
+          
           assert "/" in rutas
           assert "/api/health" in rutas
           assert "/docs" in rutas
