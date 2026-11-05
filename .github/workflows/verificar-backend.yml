@@ -1,0 +1,64 @@
+
+name: Verificar backend
+
+on:
+  push:
+    paths:
+      - "backend/**"
+      - ".github/workflows/verificar-backend.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Configurar Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install -r backend/requirements.txt
+
+      - name: Verificar sintaxis Python
+        run: |
+          python -m compileall -q backend/app
+
+      - name: Verificar aplicacion FastAPI
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from app.main import app
+          from app.schemas import IncidenciaCrear
+
+          import app.auth
+          import app.config
+          import app.db
+          import app.models
+
+          rutas = {ruta.path for ruta in app.routes}
+
+          assert "/" in rutas
+          assert "/api/health" in rutas
+          assert "/docs" in rutas
+
+          incidencia = IncidenciaCrear(
+              asunto="Impresora no funciona",
+              descripcion="La impresora no responde.",
+              impacto="Parcialmente",
+          )
+
+          assert incidencia.reincidente is False
+
+          print("Verificacion inicial del backend aprobada.")
+          PY
