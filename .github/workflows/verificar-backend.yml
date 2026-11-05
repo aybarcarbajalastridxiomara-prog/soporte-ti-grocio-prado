@@ -610,3 +610,185 @@ jobs:
               api.dependency_overrides.clear()
           PY
 
+
+          
+      - name: Probar toma de incidencias
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from types import SimpleNamespace
+          from uuid import uuid4
+
+          from fastapi.testclient import TestClient
+
+          from app.main import app as api
+          from app.auth import get_current_user
+          from app.db import get_db
+          from app.models import (
+              Incidencia,
+              Asignacion,
+              HistorialIncidencia,
+          )
+
+          ticket_id = uuid4()
+          tecnico_id = uuid4()
+
+          class BaseDatosSimulada:
+              def __init__(
+                  self,
+                  existe=True,
+                  estado="Pendiente",
+                  ocupada=False,
+              ):
+                  self.ticket = (
+                      SimpleNamespace(
+                          id=ticket_id,
+                          estado=estado,
+                      )
+                      if existe else None
+                  )
+                  self.ocupada = ocupada
+                  self.registros = []
+                  self.confirmado = False
+
+              def scalar(self, consulta):
+                  entidad = consulta.column_descriptions[0][
+                      "entity"
+                  ]
+
+                  if entidad is Incidencia:
+                      return self.ticket
+
+                  if entidad is Asignacion:
+                      if self.ocupada:
+                          return SimpleNamespace(id=uuid4())
+                      return None
+
+                  raise AssertionError("Consulta inesperada")
+
+              def add(self, objeto):
+                  self.registros.append(objeto)
+
+              def flush(self):
+                  for objeto in self.registros:
+                      if isinstance(objeto, Asignacion):
+                          if objeto.id is None:
+                              objeto.id = uuid4()
+
+              def commit(self):
+                  self.confirmado = True
+
+              def rollback(self):
+                  self.confirmado = False
+
+          def probar(cliente, rol, db, esperado):
+              api.dependency_overrides[get_current_user] = (
+                  lambda: SimpleNamespace(
+                      id=tecnico_id,
+                      rol=rol,
+                  )
+              )
+              api.dependency_overrides[get_db] = lambda: db
+
+              respuesta = cliente.post(
+                  f"/api/asignaciones/{ticket_id}/tomar"
+              )
+
+              assert respuesta.status_code == esperado, (
+                  respuesta.text
+              )
+              return respuesta
+
+          try:
+              with TestClient(api) as cliente:
+                  ruta = (
+                      f"/api/asignaciones/{ticket_id}/tomar"
+                  )
+
+                  # Sin iniciar sesion.
+                  respuesta = cliente.post(ruta)
+                  assert respuesta.status_code == 401
+
+                  # Jefe no utiliza la autotoma.
+                  probar(
+                      cliente, "JEFE",
+                      BaseDatosSimulada(), 403
+                  )
+
+                  # Representante no toma incidencias.
+                  probar(
+                      cliente, "REPRESENTANTE",
+                      BaseDatosSimulada(), 403
+                  )
+
+                  # Incidencia inexistente.
+                  probar(
+                      cliente, "ASISTENTE",
+                      BaseDatosSimulada(existe=False),
+                      404,
+                  )
+
+                  # Incidencia cerrada.
+                  probar(
+                      cliente, "PRACTICANTE",
+                      BaseDatosSimulada(estado="Cerrado"),
+                      409,
+                  )
+
+                  # Incidencia con responsable activo.
+                  probar(
+                      cliente, "ASISTENTE",
+                      BaseDatosSimulada(ocupada=True),
+                      409,
+                  )
+
+                  # Ambos perfiles pueden tomar tickets.
+                  for rol in ("ASISTENTE", "PRACTICANTE"):
+                      db = BaseDatosSimulada()
+
+                      respuesta = probar(
+                          cliente, rol, db, 201
+                      )
+
+                      datos = respuesta.json()
+
+                      assert datos["tecnico_id"] == str(
+                          tecnico_id
+                      )
+                      assert datos["origen_asignacion"] == (
+                          "AUTOTOMA"
+                      )
+                      assert datos["estado"] == "En revisión"
+                      assert db.ticket.estado == "En revisión"
+                      assert db.confirmado is True
+
+                      asignaciones = [
+                          x for x in db.registros
+                          if isinstance(x, Asignacion)
+                      ]
+
+                      historial = [
+                          x for x in db.registros
+                          if isinstance(x, HistorialIncidencia)
+                      ]
+
+                      assert len(asignaciones) == 1
+                      assert len(historial) == 1
+                      assert asignaciones[0].tecnico_id == (
+                          tecnico_id
+                      )
+                      assert asignaciones[0].asignado_por_id == (
+                          tecnico_id
+                      )
+                      assert historial[0].accion == "AUTOTOMA"
+                      assert historial[0].incidencia_id == (
+                          ticket_id
+                      )
+
+              print("Pruebas de toma de incidencias: OK")
+
+          finally:
+              api.dependency_overrides.clear()
+          PY
+
+
