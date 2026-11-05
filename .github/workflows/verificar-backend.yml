@@ -94,3 +94,101 @@ jobs:
           print("Endpoint de salud disponible: OK")
           PY
 
+          
+      - name: Probar permisos de incidencias
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from types import SimpleNamespace
+          from uuid import uuid4
+
+          from fastapi.testclient import TestClient
+
+          from app.main import app as api
+          from app.auth import get_current_user
+          from app.db import get_db
+
+
+          class BaseDatosSimulada:
+              def __init__(self):
+                  self.consulta = None
+
+              def scalars(self, consulta):
+                  self.consulta = consulta
+                  return SimpleNamespace(all=lambda: [])
+
+
+          try:
+              with TestClient(api) as cliente:
+
+                  # 1. Sin sesion debe rechazar el acceso.
+                  respuesta = cliente.get("/api/incidencias")
+                  assert respuesta.status_code == 401
+
+                  # 2. Simular representante municipal.
+                  area_tesoreria = uuid4()
+                  db_simulada = BaseDatosSimulada()
+
+                  api.dependency_overrides[get_current_user] = (
+                      lambda: SimpleNamespace(
+                          rol="REPRESENTANTE",
+                          area_id=area_tesoreria,
+                      )
+                  )
+
+                  api.dependency_overrides[get_db] = (
+                      lambda: db_simulada
+                  )
+
+                  respuesta = cliente.get(
+                      "/api/incidencias?estado=Cerrado"
+                  )
+
+                  assert respuesta.status_code == 200
+                  assert respuesta.json() == []
+
+                  # Debe filtrar por area y estado.
+                  filtro = str(db_simulada.consulta.whereclause)
+                  parametros = db_simulada.consulta.compile().params
+
+                  assert "incidencias.area_id" in filtro
+                  assert "incidencias.estado" in filtro
+                  assert area_tesoreria in parametros.values()
+                  assert "Cerrado" in parametros.values()
+
+                  # 3. Rechazar limites incorrectos.
+                  respuesta = cliente.get(
+                      "/api/incidencias?limite=101"
+                  )
+                  assert respuesta.status_code == 422
+
+                  # 4. Un rol no autorizado debe ser rechazado.
+                  api.dependency_overrides[get_current_user] = (
+                      lambda: SimpleNamespace(
+                          rol="VISITANTE",
+                          area_id=area_tesoreria,
+                      )
+                  )
+
+                  respuesta = cliente.get("/api/incidencias")
+                  assert respuesta.status_code == 403
+
+                  # 5. El jefe puede consultar todos los tickets.
+                  api.dependency_overrides[get_current_user] = (
+                      lambda: SimpleNamespace(
+                          rol="JEFE",
+                          area_id=area_tesoreria,
+                      )
+                  )
+
+                  respuesta = cliente.get("/api/incidencias")
+                  assert respuesta.status_code == 200
+                  assert db_simulada.consulta.whereclause is None
+
+              print("Pruebas de permisos de incidencias: OK")
+
+          finally:
+              api.dependency_overrides.clear()
+          PY
+
+
