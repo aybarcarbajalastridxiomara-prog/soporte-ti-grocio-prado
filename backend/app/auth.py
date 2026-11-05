@@ -20,6 +20,14 @@ from app.models import Usuario
 bearer = HTTPBearer(auto_error=False)
 
 
+def error_401():
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Sesion invalida o no iniciada.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 @lru_cache(maxsize=1)
 def get_jwks_client() -> PyJWKClient:
     """Obtiene las claves publicas de Supabase Auth."""
@@ -39,25 +47,20 @@ def get_jwks_client() -> PyJWKClient:
     )
 
 
-def get_current_user(
+def get_identity(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
-    db: Session = Depends(get_db),
-) -> Usuario:
-    """Valida el token y consulta el perfil del usuario."""
+) -> UUID:
+    """Verifica el token antes de consultar la base de datos."""
 
     if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Debe iniciar sesion.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise error_401()
 
     token = credentials.credentials
     settings = get_settings()
 
     try:
-        signing_key = (
-            get_jwks_client().get_signing_key_from_jwt(token)
+        signing_key = get_jwks_client().get_signing_key_from_jwt(
+            token
         )
 
         payload = jwt.decode(
@@ -66,26 +69,31 @@ def get_current_user(
             algorithms=["ES256", "RS256"],
             audience="authenticated",
             issuer=settings.jwt_issuer,
-            options={"require": ["sub", "exp", "iss", "aud"]},
+            options={
+                "require": ["sub", "exp", "iss", "aud"]
+            },
         )
 
         if payload.get("role") != "authenticated":
             raise InvalidTokenError("Rol JWT no autorizado.")
 
-        user_id = UUID(payload["sub"])
+        return UUID(payload["sub"])
 
-    except (InvalidTokenError, PyJWKClientError, ValueError, KeyError):
-        raise HTTPException(
-            status_code=401,
-            detail="Sesion invalida o expirada.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    except (InvalidTokenError, ValueError, KeyError):
+        raise error_401()
 
-    except (OSError, TimeoutError):
+    except PyJWKClientError:
         raise HTTPException(
             status_code=503,
-            detail="No fue posible verificar la sesion.",
+            detail="No fue posible verificar la sesion con Supabase.",
         )
+
+
+def get_current_user(
+    user_id: UUID = Depends(get_identity),
+    db: Session = Depends(get_db),
+) -> Usuario:
+    """Consulta el perfil autorizado en PostgreSQL."""
 
     usuario = db.get(Usuario, user_id)
 
@@ -99,7 +107,7 @@ def get_current_user(
 
 
 def require_roles(*roles_permitidos: str):
-    """Restringe una operacion a determinados perfiles."""
+    """Restringe operaciones segun el rol almacenado."""
 
     def validar_rol(
         usuario: Usuario = Depends(get_current_user),
