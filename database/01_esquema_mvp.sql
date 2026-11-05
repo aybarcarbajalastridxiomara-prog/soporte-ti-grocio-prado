@@ -75,7 +75,12 @@ CREATE TABLE public.incidencias (
     equipo_sistema_afectado VARCHAR(150),
     ubicacion VARCHAR(150),
     impacto VARCHAR(20) CHECK (impacto IS NULL OR impacto IN ('Si', 'Parcialmente', 'No')),
-    fecha_inicio_problema DATE,
+    fecha_inicio_problema DATE, 
+    hora_inicio_problema TIME WITHOUT TIME ZONE,
+    incidencia_anterior_id UUID
+        REFERENCES public.incidencias(id)
+        ON DELETE RESTRICT,
+    detalle_reincidencia TEXT,
     estado VARCHAR(20) NOT NULL DEFAULT 'Pendiente'
         CHECK (estado IN ('Pendiente', 'En revisión', 'Cerrado')),
     prioridad VARCHAR(15),
