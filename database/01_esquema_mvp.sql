@@ -63,10 +63,29 @@ BEFORE INSERT OR UPDATE OF area_id, rol, habilitado ON public.usuarios
 FOR EACH ROW EXECUTE FUNCTION public.validar_cupo_representantes();
 
 -- 3. INCIDENCIAS
+
+-- Secuencia global para generar codigos unicos.
+CREATE SEQUENCE public.incidencias_codigo_seq
+    AS BIGINT
+    START WITH 1
+    INCREMENT BY 1;
+
 -- El backend generara un codigo unico (ej.: INC-2026-0001).
 CREATE TABLE public.incidencias (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    codigo VARCHAR(25) NOT NULL UNIQUE,
+    codigo VARCHAR(25) NOT NULL UNIQUE
+        DEFAULT (
+            'INC-' ||
+            to_char(CURRENT_TIMESTAMP, 'YYYY') ||
+            '-' ||
+            lpad(
+                nextval(
+                    'public.incidencias_codigo_seq'
+                )::TEXT,
+                6,
+                '0'
+            )
+        ),
     area_id UUID NOT NULL REFERENCES public.areas(id) ON DELETE RESTRICT,
     reportante_id UUID NOT NULL REFERENCES public.usuarios(id) ON DELETE RESTRICT,
     asunto VARCHAR(200) NOT NULL,
