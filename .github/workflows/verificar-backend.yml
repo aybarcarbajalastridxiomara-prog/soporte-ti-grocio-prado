@@ -45,12 +45,14 @@ jobs:
           import app.config
           import app.db
           import app.models
-
-          rutas = {ruta.path for ruta in api.routes}
+          
+          rutas = set(api.openapi()["paths"])
           
           assert "/" in rutas
           assert "/api/health" in rutas
           assert "/docs" in rutas
+          assert "/api/me" in rutas
+
 
           incidencia = IncidenciaCrear(
               asunto="Impresora no funciona",
