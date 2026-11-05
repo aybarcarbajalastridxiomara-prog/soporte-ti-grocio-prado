@@ -77,6 +77,20 @@ class IncidenciaDetalle(BaseModel):
     cerrado_por_usuario_id: UUID | None
 
 
+class EventoHistorial(BaseModel):
+    """Representa una accion registrada sobre un ticket."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    usuario_id: UUID
+    accion: str
+    descripcion: str
+    fecha_registro: datetime
+
+
+
+
 @router.get(
     "",
     response_model=list[IncidenciaResumen],
@@ -290,3 +304,58 @@ def consultar_detalle_incidencia(
             )
 
     return incidencia
+
+
+@router.get(
+    "/{incidencia_id}/historial",
+    response_model=list[EventoHistorial],
+    summary="Consultar historial de una incidencia",
+)
+def consultar_historial_incidencia(
+    incidencia_id: UUID,
+    usuario_actual: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Consulta las acciones registradas sobre una incidencia."""
+
+    roles_validos = {
+        "JEFE",
+        "ASISTENTE",
+        "PRACTICANTE",
+        "REPRESENTANTE",
+    }
+
+    if usuario_actual.rol not in roles_validos:
+        raise HTTPException(
+            status_code=403,
+            detail="No tiene permiso para consultar el historial.",
+        )
+
+    incidencia = db.get(Incidencia, incidencia_id)
+
+    if incidencia is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Incidencia no encontrada.",
+        )
+
+    if usuario_actual.rol == "REPRESENTANTE":
+        if incidencia.area_id != usuario_actual.area_id:
+            raise HTTPException(
+                status_code=404,
+                detail="Incidencia no encontrada.",
+            )
+
+    consulta = (
+        select(HistorialIncidencia)
+        .where(
+            HistorialIncidencia.incidencia_id == incidencia_id
+        )
+        .order_by(
+            HistorialIncidencia.fecha_registro.asc(),
+            HistorialIncidencia.id.asc(),
+        )
+    )
+
+    return db.scalars(consulta).all()
+
