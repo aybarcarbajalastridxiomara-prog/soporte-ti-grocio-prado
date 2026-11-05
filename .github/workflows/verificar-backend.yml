@@ -1010,3 +1010,208 @@ jobs:
               api.dependency_overrides.clear()
           PY
 
+
+          
+      - name: Probar reasignacion por jefatura
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from types import SimpleNamespace
+          from uuid import uuid4
+
+          from fastapi.testclient import TestClient
+
+          from app.main import app as api
+          from app.auth import get_current_user
+          from app.db import get_db
+          from app.models import (
+              Incidencia,
+              Usuario,
+              Asignacion,
+              HistorialIncidencia,
+          )
+
+          ticket_id = uuid4()
+          jefe_id = uuid4()
+          anterior_id = uuid4()
+          nuevo_id = uuid4()
+
+          class BaseDatosSimulada:
+              def __init__(
+                  self,
+                  estado="En revisión",
+                  existe=True,
+                  asignada=True,
+                  rol_tecnico="ASISTENTE",
+                  habilitado=True,
+              ):
+                  self.ticket = (
+                      SimpleNamespace(id=ticket_id, estado=estado)
+                      if existe else None
+                  )
+                  self.anterior = (
+                      SimpleNamespace(
+                          id=uuid4(),
+                          incidencia_id=ticket_id,
+                          tecnico_id=anterior_id,
+                          fecha_fin=None,
+                      )
+                      if asignada else None
+                  )
+                  self.tecnico = SimpleNamespace(
+                      id=nuevo_id,
+                      usuario="asistente.demo",
+                      rol=rol_tecnico,
+                      habilitado=habilitado,
+                  )
+                  self.registros = []
+                  self.confirmado = False
+
+              def scalar(self, consulta):
+                  entidad = consulta.column_descriptions[0]["entity"]
+                  if entidad is Incidencia:
+                      return self.ticket
+                  if entidad is Asignacion:
+                      return self.anterior
+                  raise AssertionError("Consulta inesperada")
+
+              def get(self, modelo, identificador):
+                  if modelo is Usuario and identificador == nuevo_id:
+                      return self.tecnico
+                  return None
+
+              def add(self, objeto):
+                  self.registros.append(objeto)
+
+              def flush(self):
+                  for objeto in self.registros:
+                      if isinstance(objeto, Asignacion):
+                          if objeto.id is None:
+                              objeto.id = uuid4()
+
+              def commit(self):
+                  self.confirmado = True
+
+              def rollback(self):
+                  self.confirmado = False
+
+          ruta = f"/api/asignaciones/{ticket_id}/reasignar"
+
+          def probar(cliente, rol, db, esperado, datos=None):
+              api.dependency_overrides[get_current_user] = (
+                  lambda: SimpleNamespace(id=jefe_id, rol=rol)
+              )
+              api.dependency_overrides[get_db] = lambda: db
+
+              if datos is None:
+                  datos = {
+                      "nuevo_tecnico_id": str(nuevo_id),
+                      "motivo": "Cambio por disponibilidad",
+                  }
+
+              respuesta = cliente.post(ruta, json=datos)
+              assert respuesta.status_code == esperado, respuesta.text
+              return respuesta
+
+          try:
+              with TestClient(api) as cliente:
+                  datos = {
+                      "nuevo_tecnico_id": str(nuevo_id),
+                      "motivo": "Cambio por disponibilidad",
+                  }
+
+                  # Sin autenticacion.
+                  respuesta = cliente.post(ruta, json=datos)
+                  assert respuesta.status_code == 401
+
+                  # Solo el jefe puede reasignar.
+                  for rol in (
+                      "ASISTENTE",
+                      "PRACTICANTE",
+                      "REPRESENTANTE",
+                  ):
+                      probar(cliente, rol, BaseDatosSimulada(), 403)
+
+                  # Motivo obligatorio.
+                  probar(
+                      cliente, "JEFE", BaseDatosSimulada(), 422,
+                      {"nuevo_tecnico_id": str(nuevo_id), "motivo": ""},
+                  )
+
+                  # Incidencia inexistente.
+                  probar(
+                      cliente, "JEFE",
+                      BaseDatosSimulada(existe=False), 404,
+                  )
+
+                  # Incidencia cerrada.
+                  probar(
+                      cliente, "JEFE",
+                      BaseDatosSimulada(estado="Cerrado"), 409,
+                  )
+
+                  # Sin responsable activo.
+                  probar(
+                      cliente, "JEFE",
+                      BaseDatosSimulada(asignada=False), 409,
+                  )
+
+                  # Tecnico deshabilitado.
+                  probar(
+                      cliente, "JEFE",
+                      BaseDatosSimulada(habilitado=False), 422,
+                  )
+
+                  # Rol de destino no permitido.
+                  probar(
+                      cliente, "JEFE",
+                      BaseDatosSimulada(
+                          rol_tecnico="REPRESENTANTE"
+                      ), 422,
+                  )
+
+                  # Reasignacion exitosa.
+                  db = BaseDatosSimulada()
+                  respuesta = probar(cliente, "JEFE", db, 201)
+
+                  resultado = respuesta.json()
+                  assert resultado["tecnico_id"] == str(nuevo_id)
+                  assert resultado["estado"] == "En revisión"
+                  assert resultado["origen_asignacion"] == "JEFATURA"
+                  assert db.confirmado is True
+
+                  asignaciones = [
+                      x for x in db.registros
+                      if isinstance(x, Asignacion)
+                  ]
+                  eventos = [
+                      x for x in db.registros
+                      if isinstance(x, HistorialIncidencia)
+                  ]
+
+                  assert len(asignaciones) == 1
+                  assert len(eventos) == 1
+
+                  nueva = asignaciones[0]
+                  assert db.anterior.tecnico_id == anterior_id
+                  assert db.anterior.fecha_fin is not None
+                  assert nueva.tecnico_id == nuevo_id
+                  assert nueva.asignado_por_id == jefe_id
+                  assert nueva.motivo_reasignacion == (
+                      "Cambio por disponibilidad"
+                  )
+                  assert nueva.fecha_asignacion == (
+                      db.anterior.fecha_fin
+                  )
+                  assert eventos[0].accion == "REASIGNACION"
+                  assert eventos[0].usuario_id == jefe_id
+                  assert str(anterior_id) in eventos[0].descripcion
+                  assert str(nuevo_id) in eventos[0].descripcion
+
+              print("Pruebas de reasignacion: OK")
+
+          finally:
+              api.dependency_overrides.clear()
+          PY
+
+
