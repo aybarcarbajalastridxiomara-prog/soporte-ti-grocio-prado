@@ -3,6 +3,7 @@ from fastapi import FastAPI
 
 from app.routes.usuarios import router as usuarios_router
 from app.routes.incidencias import router as incidencias_router
+from app.routes.asignaciones import router as asignaciones_router
 
 
 app = FastAPI(
@@ -19,6 +20,7 @@ app = FastAPI(
 # Registrar los módulos de nuestra API
 app.include_router(usuarios_router)
 app.include_router(incidencias_router)
+app.include_router(asignaciones_router)
 
 
 @app.get("/")
