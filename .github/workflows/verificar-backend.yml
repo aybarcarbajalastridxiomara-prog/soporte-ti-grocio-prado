@@ -25,10 +25,12 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-
+   
       - name: Instalar dependencias
         run: |
           python -m pip install -r backend/requirements.txt
+          python -m pip install "httpx>=0.28,<1.0"
+          
 
       - name: Verificar sintaxis Python
         run: |
@@ -64,3 +66,31 @@ jobs:
 
           print("Verificacion inicial del backend aprobada.")
           PY
+
+      - name: Probar seguridad del perfil
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from fastapi.testclient import TestClient
+          from app.main import app as api
+
+          with TestClient(api) as cliente:
+              respuesta = cliente.get("/api/me")
+
+              assert respuesta.status_code == 401, (
+                  f"Se esperaba 401, se obtuvo "
+                  f"{respuesta.status_code}"
+              )
+
+              assert (
+                  respuesta.headers.get("www-authenticate")
+                  == "Bearer"
+              )
+
+              salud = cliente.get("/api/health")
+              assert salud.status_code == 200
+
+          print("Acceso sin sesion rechazado: OK")
+          print("Endpoint de salud disponible: OK")
+          PY
+
