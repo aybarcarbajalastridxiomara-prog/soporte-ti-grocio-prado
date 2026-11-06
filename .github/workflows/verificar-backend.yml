@@ -2940,8 +2940,98 @@ jobs:
           PY
 
 
+          
+      - name: Validar sintaxis y estructura del esquema SQL
+        run: |
+          python -m pip install "pglast>=6,<9"
 
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          from pglast import parse_sql
 
+          archivo = Path("database/01_esquema_mvp.sql")
 
+          assert archivo.exists(), (
+              "No se encontro el esquema SQL."
+          )
 
+          contenido = archivo.read_text(
+              encoding="utf-8"
+          )
 
+          # Analizar la sintaxis con el parser de PostgreSQL.
+          instrucciones = parse_sql(contenido)
+
+          assert instrucciones, (
+              "El archivo SQL no contiene instrucciones."
+          )
+
+          # Comprobar las ocho tablas del MVP.
+          tablas = {
+              "areas",
+              "usuarios",
+              "incidencias",
+              "asignaciones",
+              "intervenciones",
+              "verificaciones",
+              "evidencias",
+              "historial_incidencias",
+          }
+
+          encontradas = set(
+              re.findall(
+                  r"\bCREATE\s+TABLE\s+public\.([a-z_]+)\s*\(",
+                  contenido,
+                  flags=re.IGNORECASE,
+              )
+          )
+
+          assert encontradas == tablas, (
+              f"Tablas faltantes: {tablas - encontradas}. "
+              f"Tablas inesperadas: {encontradas - tablas}"
+          )
+
+          # Verificar RLS habilitado en cada tabla.
+          for tabla in tablas:
+              patron = (
+                  rf"\bALTER\s+TABLE\s+public\.{tabla}"
+                  rf"\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;"
+              )
+
+              assert re.search(
+                  patron,
+                  contenido,
+                  flags=re.IGNORECASE,
+              ), f"Falta habilitar RLS en {tabla}"
+
+          # Verificar el indice unico de evaluaciones.
+          indice_unico = (
+              r"\bCREATE\s+UNIQUE\s+INDEX\s+"
+              r"ux_verificaciones_incidencia"
+              r"\s+ON\s+public\.verificaciones"
+              r"\s*\(\s*incidencia_id\s*\)"
+          )
+
+          assert re.search(
+              indice_unico,
+              contenido,
+              flags=re.IGNORECASE,
+          ), "Falta el indice unico de verificaciones."
+
+          # Verificar la proteccion de asignaciones activas.
+          assert (
+              "ux_asignacion_activa_por_incidencia"
+              in contenido
+          ), "Falta el indice de asignaciones activas."
+
+          print("Sintaxis SQL: OK")
+          print("Ocho tablas del MVP: OK")
+          print("RLS habilitado en las ocho tablas: OK")
+          print("Indice unico de verificaciones: OK")
+          print("Indice de asignaciones activas: OK")
+          print(
+              f"Instrucciones SQL analizadas: "
+              f"{len(instrucciones)}"
+          )
+          PY
