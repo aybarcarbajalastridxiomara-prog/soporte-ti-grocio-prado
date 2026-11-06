@@ -1472,3 +1472,170 @@ jobs:
           finally:
               api.dependency_overrides.clear()
           PY
+
+
+          
+      - name: Probar consulta de intervenciones
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from datetime import datetime, timezone
+          from types import SimpleNamespace
+          from uuid import uuid4
+
+          from fastapi.testclient import TestClient
+
+          from app.main import app as api
+          from app.auth import get_current_user
+          from app.db import get_db
+          from app.models import Incidencia
+
+          ticket_id = uuid4()
+          area_tesoreria = uuid4()
+          area_logistica = uuid4()
+          tecnico_id = uuid4()
+
+          ticket = SimpleNamespace(
+              id=ticket_id,
+              area_id=area_tesoreria,
+              estado="Cerrado",
+          )
+
+          def intervencion(diagnostico):
+              return SimpleNamespace(
+                  id=uuid4(),
+                  incidencia_id=ticket_id,
+                  tecnico_id=tecnico_id,
+                  diagnostico=diagnostico,
+                  acciones_realizadas="Revision del equipo",
+                  duracion_minutos=30,
+                  solucion_aplicada=None,
+                  es_solucion_final=False,
+                  fecha_registro=datetime.now(timezone.utc),
+              )
+
+          eventos = [
+              intervencion("Falla de controlador"),
+              intervencion("Error de configuracion"),
+          ]
+
+          class BaseDatosSimulada:
+              def __init__(self):
+                  self.consulta = None
+
+              def get(self, modelo, identificador):
+                  if modelo is Incidencia:
+                      if identificador == ticket_id:
+                          return ticket
+                  return None
+
+              def scalars(self, consulta):
+                  self.consulta = consulta
+                  return SimpleNamespace(
+                      all=lambda: eventos
+                  )
+
+          db = BaseDatosSimulada()
+          ruta = f"/api/incidencias/{ticket_id}/intervenciones"
+
+          def perfil(rol, area):
+              return SimpleNamespace(
+                  id=uuid4(),
+                  rol=rol,
+                  area_id=area,
+              )
+
+          try:
+              with TestClient(api) as cliente:
+
+                  # Sin iniciar sesion.
+                  respuesta = cliente.get(ruta)
+                  assert respuesta.status_code == 401
+
+                  api.dependency_overrides[get_db] = (
+                      lambda: db
+                  )
+
+                  # Tesoreria consulta su ticket cerrado.
+                  api.dependency_overrides[
+                      get_current_user
+                  ] = lambda: perfil(
+                      "REPRESENTANTE", area_tesoreria
+                  )
+
+                  respuesta = cliente.get(ruta)
+                  assert respuesta.status_code == 200, (
+                      respuesta.text
+                  )
+
+                  datos = respuesta.json()
+                  assert len(datos) == 2
+                  assert datos[0]["diagnostico"] == (
+                      "Falla de controlador"
+                  )
+                  assert datos[1]["diagnostico"] == (
+                      "Error de configuracion"
+                  )
+
+                  # Comprobar que se consulta el ticket correcto.
+                  parametros = db.consulta.compile().params
+                  assert ticket_id in parametros.values()
+
+                  # Comprobar orden cronologico solicitado.
+                  sql = str(db.consulta).lower()
+                  assert "order by" in sql
+                  assert "fecha_registro" in sql
+
+                  # Logistica no puede consultar Tesoreria.
+                  api.dependency_overrides[
+                      get_current_user
+                  ] = lambda: perfil(
+                      "REPRESENTANTE", area_logistica
+                  )
+
+                  respuesta = cliente.get(ruta)
+                  assert respuesta.status_code == 404
+
+                  # Jefe puede consultar intervenciones.
+                  api.dependency_overrides[
+                      get_current_user
+                  ] = lambda: perfil(
+                      "JEFE", area_logistica
+                  )
+
+                  respuesta = cliente.get(ruta)
+                  assert respuesta.status_code == 200
+
+                  # Asistente y practicante tambien consultan.
+                  for rol in ("ASISTENTE", "PRACTICANTE"):
+                      api.dependency_overrides[
+                          get_current_user
+                      ] = lambda rol=rol: perfil(
+                          rol, area_logistica
+                      )
+
+                      respuesta = cliente.get(ruta)
+                      assert respuesta.status_code == 200
+
+                  # Ticket inexistente.
+                  respuesta = cliente.get(
+                      f"/api/incidencias/{uuid4()}/intervenciones"
+                  )
+                  assert respuesta.status_code == 404
+
+                  # Rol no autorizado.
+                  api.dependency_overrides[
+                      get_current_user
+                  ] = lambda: perfil(
+                      "VISITANTE", area_tesoreria
+                  )
+
+                  respuesta = cliente.get(ruta)
+                  assert respuesta.status_code == 403
+
+              print("Consulta de intervenciones: OK")
+
+          finally:
+              api.dependency_overrides.clear()
+          PY
+
