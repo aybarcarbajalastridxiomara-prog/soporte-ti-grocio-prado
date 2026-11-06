@@ -98,6 +98,25 @@ def registrar_verificacion(
                 ),
             )
 
+        
+        # Evitar evaluaciones repetidas sobre el mismo cierre.
+        evaluacion_existente = db.scalar(
+            select(Verificacion.id)
+            .where(
+                Verificacion.incidencia_id == incidencia_id
+            )
+            .limit(1)
+        )
+
+        if evaluacion_existente is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Esta incidencia ya tiene una evaluacion "
+                    "registrada. Consulte su historial."
+                ),
+            )
+
         nueva = Verificacion(
             incidencia_id=incidencia_id,
             usuario_id=usuario_actual.id,
