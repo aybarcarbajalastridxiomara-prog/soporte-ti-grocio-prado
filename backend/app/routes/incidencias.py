@@ -1,5 +1,5 @@
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
 from uuid import UUID
 
 from fastapi import (
@@ -9,17 +9,20 @@ from fastapi import (
     Query,
     status,
 )
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.db import get_db
 from app.models import (
+    Asignacion,
     HistorialIncidencia,
     Incidencia,
+    Intervencion,
     Usuario,
 )
+
 from app.schemas import (
     EstadoIncidencia,
     IncidenciaCrear,
