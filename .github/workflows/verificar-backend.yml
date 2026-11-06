@@ -2345,5 +2345,197 @@ jobs:
           PY
 
 
+          
+      - name: Probar consulta de verificaciones
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from datetime import datetime, timedelta, timezone
+          from types import SimpleNamespace
+          from uuid import uuid4
+
+          from fastapi.testclient import TestClient
+
+          from app.main import app as api
+          from app.auth import get_current_user
+          from app.db import get_db
+          from app.models import Incidencia, Verificacion
+
+          ticket_id = uuid4()
+          area_tesoreria = uuid4()
+          area_logistica = uuid4()
+          fecha = datetime(2026, 11, 5, tzinfo=timezone.utc)
+
+          def crear_evaluacion(resultado, detalle, fecha_registro):
+              return SimpleNamespace(
+                  id=uuid4(),
+                  incidencia_id=ticket_id,
+                  usuario_id=uuid4(),
+                  resultado=resultado,
+                  observaciones=detalle,
+                  fecha_verificacion=fecha_registro,
+              )
+
+          evaluaciones = [
+              crear_evaluacion(
+                  "Observación",
+                  "La impresora continua presentando fallas.",
+                  fecha + timedelta(days=1),
+              ),
+              crear_evaluacion(
+                  "Conformidad",
+                  "Se recibio la atencion.",
+                  fecha,
+              ),
+          ]
+
+          class BaseDatosSimulada:
+              def __init__(self, existe=True, sin_evaluaciones=False):
+                  self.existe = existe
+                  self.consulta = None
+                  self.evaluaciones = (
+                      [] if sin_evaluaciones else evaluaciones
+                  )
+
+              def get(self, modelo, identificador):
+                  if (
+                      modelo is Incidencia
+                      and identificador == ticket_id
+                      and self.existe
+                  ):
+                      return SimpleNamespace(
+                          id=ticket_id,
+                          area_id=area_tesoreria,
+                          estado="Cerrado",
+                      )
+                  return None
+
+              def scalars(self, consulta):
+                  self.consulta = consulta
+                  assert (
+                      consulta.column_descriptions[0]["entity"]
+                      is Verificacion
+                  )
+                  return SimpleNamespace(
+                      all=lambda: self.evaluaciones
+                  )
+
+          ruta = f"/api/incidencias/{ticket_id}/verificaciones"
+
+          def probar(cliente, rol, area, db, esperado):
+              api.dependency_overrides[get_current_user] = (
+                  lambda: SimpleNamespace(
+                      id=uuid4(),
+                      rol=rol,
+                      area_id=area,
+                  )
+              )
+              api.dependency_overrides[get_db] = lambda: db
+
+              respuesta = cliente.get(ruta)
+              assert respuesta.status_code == esperado, (
+                  respuesta.text
+              )
+              return respuesta
+
+          try:
+              with TestClient(api) as cliente:
+
+                  # Sin autenticacion.
+                  respuesta = cliente.get(ruta)
+                  assert respuesta.status_code == 401
+
+                  # Representante consulta su propia area.
+                  db = BaseDatosSimulada()
+                  respuesta = probar(
+                      cliente,
+                      "REPRESENTANTE",
+                      area_tesoreria,
+                      db,
+                      200,
+                  )
+
+                  datos = respuesta.json()
+                  assert len(datos) == 2
+
+                  # La evaluacion mas reciente aparece primero.
+                  assert datos[0]["resultado"] == "Observación"
+                  assert datos[1]["resultado"] == "Conformidad"
+                  assert (
+                      datos[0]["fecha_verificacion"]
+                      > datos[1]["fecha_verificacion"]
+                  )
+
+                  # La consulta SQL filtra por la incidencia.
+                  parametros = db.consulta.compile().params
+                  assert ticket_id in parametros.values()
+
+                  # La consulta SQL solicita orden descendente.
+                  sql = str(db.consulta).upper()
+                  assert "ORDER BY" in sql
+                  assert "FECHA_VERIFICACION DESC" in sql
+
+                  # Representante de otra area.
+                  probar(
+                      cliente,
+                      "REPRESENTANTE",
+                      area_logistica,
+                      BaseDatosSimulada(),
+                      404,
+                  )
+
+                  # Jefe, asistente y practicante.
+                  for rol in ("JEFE", "ASISTENTE", "PRACTICANTE"):
+                      respuesta = probar(
+                          cliente,
+                          rol,
+                          area_logistica,
+                          BaseDatosSimulada(),
+                          200,
+                      )
+                      assert len(respuesta.json()) == 2
+
+                  # Incidencia inexistente.
+                  probar(
+                      cliente,
+                      "JEFE",
+                      area_tesoreria,
+                      BaseDatosSimulada(existe=False),
+                      404,
+                  )
+
+                  # Incidencia sin evaluaciones.
+                  respuesta = probar(
+                      cliente,
+                      "JEFE",
+                      area_tesoreria,
+                      BaseDatosSimulada(sin_evaluaciones=True),
+                      200,
+                  )
+                  assert respuesta.json() == []
+
+                  # Rol no autorizado.
+                  probar(
+                      cliente,
+                      "VISITANTE",
+                      area_tesoreria,
+                      BaseDatosSimulada(),
+                      403,
+                  )
+
+                  # Identificador invalido.
+                  respuesta = cliente.get(
+                      "/api/incidencias/no-es-uuid/verificaciones"
+                  )
+                  assert respuesta.status_code == 422
+
+              print("Consulta de verificaciones: OK")
+
+          finally:
+              api.dependency_overrides.clear()
+          PY
+
+
+
 
 
