@@ -2102,4 +2102,248 @@ jobs:
           PY
 
 
+          
+      - name: Probar conformidad y observaciones
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from datetime import datetime, timezone
+          from types import SimpleNamespace
+          from uuid import uuid4
+
+          from fastapi.testclient import TestClient
+
+          from app.main import app as api
+          from app.auth import get_current_user
+          from app.db import get_db
+          from app.models import (
+              Incidencia,
+              Verificacion,
+              HistorialIncidencia,
+          )
+
+          ticket_id = uuid4()
+          usuario_id = uuid4()
+          area_id = uuid4()
+
+          class BaseDatosSimulada:
+              def __init__(
+                  self,
+                  existe=True,
+                  estado="Cerrado",
+                  area_ticket=None,
+              ):
+                  self.ticket = (
+                      SimpleNamespace(
+                          id=ticket_id,
+                          area_id=area_ticket or area_id,
+                          estado=estado,
+                      )
+                      if existe else None
+                  )
+                  self.registros = []
+                  self.confirmado = False
+
+              def scalar(self, consulta):
+                  entidad = consulta.column_descriptions[0][
+                      "entity"
+                  ]
+
+                  assert entidad is Incidencia
+                  assert ticket_id in (
+                      consulta.compile().params.values()
+                  )
+
+                  return self.ticket
+
+              def add(self, objeto):
+                  self.registros.append(objeto)
+
+              def flush(self):
+                  for objeto in self.registros:
+                      if isinstance(objeto, Verificacion):
+                          if objeto.id is None:
+                              objeto.id = uuid4()
+
+                          if objeto.fecha_verificacion is None:
+                              objeto.fecha_verificacion = (
+                                  datetime.now(timezone.utc)
+                              )
+
+              def commit(self):
+                  self.confirmado = True
+
+              def rollback(self):
+                  self.confirmado = False
+
+          ruta = (
+              f"/api/incidencias/{ticket_id}/verificaciones"
+          )
+
+          conformidad = {
+              "resultado": "Conformidad",
+              "observaciones": "El equipo funciona correctamente.",
+          }
+
+          observacion = {
+              "resultado": "Observación",
+              "observaciones": (
+                  "La impresora sigue presentando fallas."
+              ),
+          }
+
+          def probar(
+              cliente, rol, db, datos, esperado,
+              area_usuario=area_id,
+          ):
+              api.dependency_overrides[get_current_user] = (
+                  lambda: SimpleNamespace(
+                      id=usuario_id,
+                      rol=rol,
+                      area_id=area_usuario,
+                  )
+              )
+
+              api.dependency_overrides[get_db] = lambda: db
+
+              respuesta = cliente.post(
+                  ruta,
+                  json=datos,
+              )
+
+              assert respuesta.status_code == esperado, (
+                  respuesta.text
+              )
+
+              return respuesta
+
+          try:
+              with TestClient(api) as cliente:
+
+                  # No autenticado.
+                  respuesta = cliente.post(
+                      ruta, json=conformidad
+                  )
+                  assert respuesta.status_code == 401
+
+                  # Solo el representante registra evaluaciones.
+                  for rol in (
+                      "JEFE",
+                      "ASISTENTE",
+                      "PRACTICANTE",
+                  ):
+                      probar(
+                          cliente, rol,
+                          BaseDatosSimulada(),
+                          conformidad, 403,
+                      )
+
+                  # Incidencia inexistente.
+                  probar(
+                      cliente, "REPRESENTANTE",
+                      BaseDatosSimulada(existe=False),
+                      conformidad, 404,
+                  )
+
+                  # Representante de otra area.
+                  probar(
+                      cliente, "REPRESENTANTE",
+                      BaseDatosSimulada(),
+                      observacion, 404,
+                      area_usuario=uuid4(),
+                  )
+
+                  # Incidencia aun abierta.
+                  probar(
+                      cliente, "REPRESENTANTE",
+                      BaseDatosSimulada(
+                          estado="En revisión"
+                      ),
+                      conformidad, 409,
+                  )
+
+                  # Observacion sin descripcion.
+                  probar(
+                      cliente, "REPRESENTANTE",
+                      BaseDatosSimulada(),
+                      {
+                          "resultado": "Observación",
+                          "observaciones": "",
+                      },
+                      422,
+                  )
+
+                  # Resultado no permitido.
+                  probar(
+                      cliente, "REPRESENTANTE",
+                      BaseDatosSimulada(),
+                      {
+                          "resultado": "Pendiente",
+                          "observaciones": "Comentario",
+                      },
+                      422,
+                  )
+
+                  # Registrar conformidad y observacion.
+                  casos = [
+                      (conformidad, "CONFORMIDAD"),
+                      (observacion, "OBSERVACION"),
+                  ]
+
+                  for datos, accion in casos:
+                      db = BaseDatosSimulada()
+
+                      respuesta = probar(
+                          cliente,
+                          "REPRESENTANTE",
+                          db,
+                          datos,
+                          201,
+                      )
+
+                      resultado = respuesta.json()
+
+                      assert resultado["incidencia_id"] == str(
+                          ticket_id
+                      )
+                      assert resultado["usuario_id"] == str(
+                          usuario_id
+                      )
+                      assert resultado["resultado"] == (
+                          datos["resultado"]
+                      )
+
+                      verificaciones = [
+                          x for x in db.registros
+                          if isinstance(x, Verificacion)
+                      ]
+
+                      historial = [
+                          x for x in db.registros
+                          if isinstance(x, HistorialIncidencia)
+                      ]
+
+                      assert len(verificaciones) == 1
+                      assert len(historial) == 1
+                      assert db.confirmado is True
+
+                      assert historial[0].accion == accion
+                      assert historial[0].usuario_id == (
+                          usuario_id
+                      )
+                      assert historial[0].incidencia_id == (
+                          ticket_id
+                      )
+
+                      # La evaluacion no reabre el ticket.
+                      assert db.ticket.estado == "Cerrado"
+
+              print("Pruebas de conformidad y observaciones: OK")
+
+          finally:
+              api.dependency_overrides.clear()
+          PY
+
+
+
 
