@@ -1849,3 +1849,257 @@ jobs:
           PY
 
 
+          
+      - name: Probar cierre de incidencias
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from types import SimpleNamespace
+          from uuid import uuid4
+
+          from fastapi.testclient import TestClient
+
+          from app.main import app as api
+          from app.auth import get_current_user
+          from app.db import get_db
+          from app.models import (
+              Asignacion,
+              HistorialIncidencia,
+              Incidencia,
+              Intervencion,
+          )
+
+          ticket_id = uuid4()
+          tecnico_id = uuid4()
+
+          datos = {
+              "resumen_cierre": (
+                  "Se verifico el funcionamiento del equipo "
+                  "mediante pruebas satisfactorias."
+              ),
+          }
+
+          class BaseDatosSimulada:
+              def __init__(
+                  self,
+                  estado="En revisión",
+                  existe=True,
+                  asignada=True,
+                  responsable_id=None,
+                  hay_intervencion=True,
+                  solucion_final=True,
+                  solucion="Equipo funcionando correctamente",
+              ):
+                  self.ticket = (
+                      SimpleNamespace(
+                          id=ticket_id,
+                          codigo="INC-2026-000015",
+                          estado=estado,
+                          fecha_cierre=None,
+                          cerrado_por_usuario_id=None,
+                      )
+                      if existe else None
+                  )
+
+                  self.asignacion = (
+                      SimpleNamespace(
+                          tecnico_id=(
+                              responsable_id or tecnico_id
+                          ),
+                          fecha_fin=None,
+                      )
+                      if asignada else None
+                  )
+
+                  self.ultima = (
+                      SimpleNamespace(
+                          tecnico_id=tecnico_id,
+                          es_solucion_final=solucion_final,
+                          solucion_aplicada=solucion,
+                      )
+                      if hay_intervencion else None
+                  )
+
+                  self.registros = []
+                  self.confirmado = False
+
+              def scalar(self, consulta):
+                  entidad = consulta.column_descriptions[0][
+                      "entity"
+                  ]
+
+                  if entidad is Incidencia:
+                      return self.ticket
+
+                  if entidad is Asignacion:
+                      return self.asignacion
+
+                  if entidad is Intervencion:
+                      return self.ultima
+
+                  raise AssertionError("Consulta inesperada")
+
+              def add(self, objeto):
+                  self.registros.append(objeto)
+
+              def flush(self):
+                  pass
+
+              def commit(self):
+                  self.confirmado = True
+
+              def rollback(self):
+                  self.confirmado = False
+
+          ruta = f"/api/incidencias/{ticket_id}/cerrar"
+
+          def probar(cliente, rol, db, esperado, cuerpo=None):
+              api.dependency_overrides[get_current_user] = (
+                  lambda: SimpleNamespace(
+                      id=tecnico_id,
+                      rol=rol,
+                  )
+              )
+              api.dependency_overrides[get_db] = lambda: db
+
+              respuesta = cliente.post(
+                  ruta,
+                  json=datos if cuerpo is None else cuerpo,
+              )
+
+              assert respuesta.status_code == esperado, (
+                  respuesta.text
+              )
+
+              return respuesta
+
+          try:
+              with TestClient(api) as cliente:
+
+                  # Sin iniciar sesion.
+                  respuesta = cliente.post(ruta, json=datos)
+                  assert respuesta.status_code == 401
+
+                  # Solo asistente o practicante.
+                  for rol in ("JEFE", "REPRESENTANTE"):
+                      probar(
+                          cliente, rol,
+                          BaseDatosSimulada(), 403,
+                      )
+
+                  # Incidencia inexistente.
+                  probar(
+                      cliente, "ASISTENTE",
+                      BaseDatosSimulada(existe=False), 404,
+                  )
+
+                  # Incidencia ya cerrada.
+                  probar(
+                      cliente, "ASISTENTE",
+                      BaseDatosSimulada(estado="Cerrado"), 409,
+                  )
+
+                  # Incidencia aun pendiente.
+                  probar(
+                      cliente, "PRACTICANTE",
+                      BaseDatosSimulada(estado="Pendiente"), 409,
+                  )
+
+                  # Sin responsable.
+                  probar(
+                      cliente, "ASISTENTE",
+                      BaseDatosSimulada(asignada=False), 409,
+                  )
+
+                  # Responsable diferente.
+                  probar(
+                      cliente, "ASISTENTE",
+                      BaseDatosSimulada(
+                          responsable_id=uuid4()
+                      ), 403,
+                  )
+
+                  # Sin intervencion tecnica.
+                  probar(
+                      cliente, "ASISTENTE",
+                      BaseDatosSimulada(
+                          hay_intervencion=False
+                      ), 409,
+                  )
+
+                  # Intervencion sin solucion final.
+                  probar(
+                      cliente, "ASISTENTE",
+                      BaseDatosSimulada(
+                          solucion_final=False
+                      ), 409,
+                  )
+
+                  # Solucion final sin descripcion.
+                  probar(
+                      cliente, "ASISTENTE",
+                      BaseDatosSimulada(
+                          solucion="   "
+                      ), 409,
+                  )
+
+                  # Resumen de cierre demasiado corto.
+                  probar(
+                      cliente, "ASISTENTE",
+                      BaseDatosSimulada(), 422,
+                      {"resumen_cierre": "Listo"},
+                  )
+
+                  # Cierre correcto por ambos perfiles.
+                  for rol in ("ASISTENTE", "PRACTICANTE"):
+                      db = BaseDatosSimulada()
+
+                      respuesta = probar(
+                          cliente, rol, db, 200
+                      )
+
+                      resultado = respuesta.json()
+
+                      assert resultado["incidencia_id"] == str(
+                          ticket_id
+                      )
+                      assert resultado["estado"] == "Cerrado"
+                      assert resultado["cerrado_por_usuario_id"] == str(
+                          tecnico_id
+                      )
+
+                      assert db.confirmado is True
+                      assert db.ticket.estado == "Cerrado"
+                      assert db.ticket.fecha_cierre is not None
+                      assert db.ticket.cerrado_por_usuario_id == (
+                          tecnico_id
+                      )
+                      assert db.asignacion.fecha_fin == (
+                          db.ticket.fecha_cierre
+                      )
+
+                      historial = [
+                          x for x in db.registros
+                          if isinstance(x, HistorialIncidencia)
+                      ]
+
+                      assert len(historial) == 1
+                      assert historial[0].accion == "CIERRE"
+                      assert historial[0].usuario_id == tecnico_id
+                      assert "Resumen:" in historial[0].descripcion
+
+                      # No se permite cerrar nuevamente.
+                      respuesta = probar(
+                          cliente, rol, db, 409
+                      )
+                      assert db.ticket.estado == "Cerrado"
+                      assert len(db.registros) == 1
+
+              print("Pruebas de cierre de incidencias: OK")
+
+          finally:
+              api.dependency_overrides.clear()
+          PY
+
+
+
