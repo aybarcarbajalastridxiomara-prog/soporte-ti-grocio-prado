@@ -3227,4 +3227,136 @@ jobs:
 
           echo "Prueba real de evaluaciones duplicadas: OK"
 
+          
+          # Probar el maximo de dos representantes por area.
+          docker exec -i grocio-pg-mvp-test \
+            psql -U postgres -d grocio_test \
+            -v ON_ERROR_STOP=1 <<'SQL'
+
+          DO $$
+          DECLARE
+              v_area UUID := gen_random_uuid();
+              v_rep1 UUID := gen_random_uuid();
+              v_rep2 UUID := gen_random_uuid();
+              v_rep3 UUID := gen_random_uuid();
+              v_rechazado BOOLEAN := FALSE;
+              v_mensaje TEXT;
+          BEGIN
+              INSERT INTO public.areas (id, nombre)
+              VALUES (v_area, 'Area de cupos CI');
+
+              INSERT INTO auth.users (id)
+              VALUES (v_rep1), (v_rep2), (v_rep3);
+
+              -- Registrar dos representantes habilitados.
+              INSERT INTO public.usuarios (
+                  id, area_id, nombre_completo,
+                  usuario, rol, habilitado
+              )
+              VALUES
+                  (
+                      v_rep1, v_area, 'Representante uno',
+                      'rep1_ci', 'REPRESENTANTE', TRUE
+                  ),
+                  (
+                      v_rep2, v_area, 'Representante dos',
+                      'rep2_ci', 'REPRESENTANTE', TRUE
+                  );
+
+              -- Un tercer representante activo debe fallar.
+              BEGIN
+                  INSERT INTO public.usuarios (
+                      id, area_id, nombre_completo,
+                      usuario, rol, habilitado
+                  )
+                  VALUES (
+                      v_rep3, v_area, 'Representante tres',
+                      'rep3_ci', 'REPRESENTANTE', TRUE
+                  );
+
+              EXCEPTION WHEN raise_exception THEN
+                  GET STACKED DIAGNOSTICS
+                      v_mensaje = MESSAGE_TEXT;
+
+                  IF v_mensaje <>
+                     'El area ya tiene dos representantes habilitados'
+                  THEN
+                      RAISE;
+                  END IF;
+
+                  v_rechazado := TRUE;
+              END;
+
+              IF NOT v_rechazado THEN
+                  RAISE EXCEPTION
+                      'Fallo: se permitieron tres representantes';
+              END IF;
+
+              -- El tercero puede existir deshabilitado.
+              INSERT INTO public.usuarios (
+                  id, area_id, nombre_completo,
+                  usuario, rol, habilitado
+              )
+              VALUES (
+                  v_rep3, v_area, 'Representante tres',
+                  'rep3_ci', 'REPRESENTANTE', FALSE
+              );
+
+              -- Tampoco se debe permitir activarlo.
+              v_rechazado := FALSE;
+
+              BEGIN
+                  UPDATE public.usuarios
+                  SET habilitado = TRUE
+                  WHERE id = v_rep3;
+
+              EXCEPTION WHEN raise_exception THEN
+                  GET STACKED DIAGNOSTICS
+                      v_mensaje = MESSAGE_TEXT;
+
+                  IF v_mensaje <>
+                     'El area ya tiene dos representantes habilitados'
+                  THEN
+                      RAISE;
+                  END IF;
+
+                  v_rechazado := TRUE;
+              END;
+
+              IF NOT v_rechazado THEN
+                  RAISE EXCEPTION
+                      'Fallo: se activo un tercer representante';
+              END IF;
+
+              -- Liberar un cupo deshabilitando al primero.
+              UPDATE public.usuarios
+              SET habilitado = FALSE
+              WHERE id = v_rep1;
+
+              -- Ahora el tercero puede habilitarse.
+              UPDATE public.usuarios
+              SET habilitado = TRUE
+              WHERE id = v_rep3;
+
+              IF (
+                  SELECT count(*)
+                  FROM public.usuarios
+                  WHERE area_id = v_area
+                    AND rol = 'REPRESENTANTE'
+                    AND habilitado = TRUE
+              ) <> 2 THEN
+                  RAISE EXCEPTION
+                      'Fallo: cantidad incorrecta de representantes';
+              END IF;
+
+              RAISE NOTICE
+                  'Limite de dos representantes por area: OK';
+          END;
+          $$;
+
+          SQL
+
+          echo "Prueba real de cupos de representantes: OK"
+
+
 
