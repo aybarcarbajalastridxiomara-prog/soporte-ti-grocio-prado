@@ -146,3 +146,61 @@ def registrar_verificacion(
     except Exception:
         db.rollback()
         raise
+
+
+
+@router.get(
+    "/{incidencia_id}/verificaciones",
+    response_model=list[VerificacionRespuesta],
+    summary="Consultar conformidades y observaciones",
+)
+def consultar_verificaciones(
+    incidencia_id: UUID,
+    usuario_actual: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Consulta las evaluaciones de una incidencia."""
+
+    roles_validos = {
+        "JEFE",
+        "ASISTENTE",
+        "PRACTICANTE",
+        "REPRESENTANTE",
+    }
+
+    if usuario_actual.rol not in roles_validos:
+        raise HTTPException(
+            status_code=403,
+            detail="No tiene permiso para consultar evaluaciones.",
+        )
+
+    incidencia = db.get(Incidencia, incidencia_id)
+
+    if incidencia is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Incidencia no encontrada.",
+        )
+
+    # Los representantes solo consultan su propia area.
+    if usuario_actual.rol == "REPRESENTANTE":
+        if incidencia.area_id != usuario_actual.area_id:
+            raise HTTPException(
+                status_code=404,
+                detail="Incidencia no encontrada.",
+            )
+
+    # Mostrar las evaluaciones mas recientes primero.
+    consulta = (
+        select(Verificacion)
+        .where(
+            Verificacion.incidencia_id == incidencia_id
+        )
+        .order_by(
+            Verificacion.fecha_verificacion.desc(),
+            Verificacion.id.desc(),
+        )
+    )
+
+    return db.scalars(consulta).all()
+
