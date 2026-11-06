@@ -3064,10 +3064,12 @@ jobs:
             sleep 2
           done
 
+          
           # Simular solo las dependencias minimas de Supabase.
-          docker exec grocio-pg-mvp-test \
+          docker exec -i grocio-pg-mvp-test \
             psql -U postgres -d grocio_test \
             -v ON_ERROR_STOP=1 <<'SQL'
+
           CREATE SCHEMA auth;
           CREATE TABLE auth.users (
               id UUID PRIMARY KEY
