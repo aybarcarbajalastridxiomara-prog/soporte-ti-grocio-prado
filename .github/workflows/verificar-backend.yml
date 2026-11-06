@@ -3110,3 +3110,121 @@ jobs:
 
           echo "Prueba inicial de PostgreSQL completada."
 
+          
+          # Probar restricciones con datos reales.
+          docker exec -i grocio-pg-mvp-test \
+            psql -U postgres -d grocio_test \
+            -v ON_ERROR_STOP=1 <<'SQL'
+
+          DO $$
+          DECLARE
+              v_area UUID := gen_random_uuid();
+              v_jefe UUID := gen_random_uuid();
+              v_representante UUID := gen_random_uuid();
+              v_ticket UUID := gen_random_uuid();
+              v_otro_ticket UUID := gen_random_uuid();
+              v_restriccion TEXT;
+          BEGIN
+              INSERT INTO public.areas (id, nombre)
+              VALUES (v_area, 'Area de prueba CI');
+
+              INSERT INTO auth.users (id)
+              VALUES (v_jefe), (v_representante);
+
+              INSERT INTO public.usuarios (
+                  id, area_id, nombre_completo, usuario, rol
+              )
+              VALUES
+                  (
+                      v_jefe, v_area, 'Jefe de prueba',
+                      'jefe_ci', 'JEFE'
+                  ),
+                  (
+                      v_representante, v_area,
+                      'Representante de prueba',
+                      'representante_ci', 'REPRESENTANTE'
+                  );
+
+              INSERT INTO public.incidencias (
+                  id, area_id, reportante_id,
+                  asunto, descripcion, estado,
+                  fecha_cierre, cerrado_por_usuario_id
+              )
+              VALUES
+                  (
+                      v_ticket, v_area, v_representante,
+                      'Falla de impresora', 'No imprime',
+                      'Cerrado', now(), v_jefe
+                  ),
+                  (
+                      v_otro_ticket, v_area, v_representante,
+                      'Falla de red', 'Sin conexion',
+                      'Cerrado', now(), v_jefe
+                  );
+
+              -- Primera evaluacion: permitida.
+              INSERT INTO public.verificaciones (
+                  incidencia_id, usuario_id,
+                  resultado, observaciones
+              )
+              VALUES (
+                  v_ticket, v_representante,
+                  'Conformidad', 'Atencion correcta'
+              );
+
+              -- Segunda evaluacion del mismo ticket:
+              -- PostgreSQL debe rechazarla.
+              BEGIN
+                  INSERT INTO public.verificaciones (
+                      incidencia_id, usuario_id,
+                      resultado, observaciones
+                  )
+                  VALUES (
+                      v_ticket, v_representante,
+                      'Observación', 'Persisten las fallas'
+                  );
+
+                  RAISE EXCEPTION
+                      'Fallo: se permitio una evaluacion duplicada';
+
+              EXCEPTION WHEN unique_violation THEN
+                  GET STACKED DIAGNOSTICS
+                      v_restriccion = CONSTRAINT_NAME;
+
+                  IF v_restriccion <>
+                     'ux_verificaciones_incidencia' THEN
+                      RAISE EXCEPTION
+                          'Restriccion inesperada: %',
+                          v_restriccion;
+                  END IF;
+              END;
+
+              -- Otro ticket si puede tener su evaluacion.
+              INSERT INTO public.verificaciones (
+                  incidencia_id, usuario_id,
+                  resultado, observaciones
+              )
+              VALUES (
+                  v_otro_ticket, v_representante,
+                  'Conformidad', 'Conexion restaurada'
+              );
+
+              IF (
+                  SELECT count(*)
+                  FROM public.verificaciones
+                  WHERE incidencia_id = v_ticket
+              ) <> 1 THEN
+                  RAISE EXCEPTION
+                      'Fallo: el ticket tiene evaluaciones duplicadas';
+              END IF;
+
+              RAISE NOTICE
+                  'Restriccion de evaluaciones duplicadas: OK';
+          END;
+          $$;
+
+          SQL
+
+          echo "Prueba real de evaluaciones duplicadas: OK"
+
+
