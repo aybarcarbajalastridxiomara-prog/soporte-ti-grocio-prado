@@ -2144,17 +2144,38 @@ jobs:
                   self.registros = []
                   self.confirmado = False
 
+              
               def scalar(self, consulta):
                   entidad = consulta.column_descriptions[0][
                       "entity"
                   ]
 
-                  assert entidad is Incidencia
                   assert ticket_id in (
                       consulta.compile().params.values()
                   )
 
-                  return self.ticket
+                  # Consulta de la incidencia.
+                  if entidad is Incidencia:
+                      return self.ticket
+
+                  # Consulta de evaluaciones previas.
+                  if entidad is Verificacion:
+                      return next(
+                          (
+                              registro.id
+                              for registro in self.registros
+                              if isinstance(
+                                  registro, Verificacion
+                              )
+                              and registro.incidencia_id == ticket_id
+                          ),
+                          None,
+                      )
+
+                  raise AssertionError(
+                      "Consulta inesperada"
+                  )
+
 
               def add(self, objeto):
                   self.registros.append(objeto)
