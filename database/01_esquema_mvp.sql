@@ -203,7 +203,7 @@ CREATE INDEX ix_incidencias_reportante ON public.incidencias(reportante_id);
 CREATE INDEX ix_incidencias_fecha ON public.incidencias(fecha_registro DESC);
 CREATE INDEX ix_asignaciones_tecnico ON public.asignaciones(tecnico_id);
 CREATE INDEX ix_intervenciones_incidencia_fecha ON public.intervenciones(incidencia_id, fecha_registro DESC);
-CREATE INDEX ix_verificaciones_incidencia ON public.verificaciones(incidencia_id);
+CREATE UNIQUE INDEX ux_verificaciones_incidencia ON public.verificaciones(incidencia_id);
 CREATE INDEX ix_evidencias_incidencia ON public.evidencias(incidencia_id);
 CREATE INDEX ix_historial_incidencia_fecha ON public.historial_incidencias(incidencia_id, fecha_registro DESC);
 
