@@ -3035,3 +3035,76 @@ jobs:
               f"{len(instrucciones)}"
           )
           PY
+
+
+          
+      - name: Probar esquema en PostgreSQL temporal
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Crear una base PostgreSQL solo para esta prueba.
+          docker run --detach --rm \
+            --name grocio-pg-mvp-test \
+            -e POSTGRES_PASSWORD=clave_solo_para_ci \
+            -e POSTGRES_DB=grocio_test \
+            -v "$GITHUB_WORKSPACE/database/01_esquema_mvp.sql:/tmp/esquema.sql:ro" \
+            postgres:16
+
+          # Eliminar el contenedor al finalizar.
+          trap 'docker rm -f grocio-pg-mvp-test >/dev/null 2>&1 || true' EXIT
+
+          # Esperar a que PostgreSQL este disponible.
+          for intento in {1..30}; do
+            if docker exec grocio-pg-mvp-test \
+                pg_isready -U postgres -d grocio_test \
+                >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+
+          # Simular solo las dependencias minimas de Supabase.
+          docker exec grocio-pg-mvp-test \
+            psql -U postgres -d grocio_test \
+            -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE SCHEMA auth;
+          CREATE TABLE auth.users (
+              id UUID PRIMARY KEY
+          );
+          CREATE ROLE anon NOLOGIN;
+          CREATE ROLE authenticated NOLOGIN;
+          SQL
+
+          # Ejecutar nuestro esquema completo.
+          docker exec grocio-pg-mvp-test \
+            psql -U postgres -d grocio_test \
+            -v ON_ERROR_STOP=1 \
+            -f /tmp/esquema.sql
+
+          # Comprobar que existen las ocho tablas.
+          tablas=$(docker exec grocio-pg-mvp-test \
+            psql -U postgres -d grocio_test -At \
+            -c "SELECT count(*) FROM pg_tables WHERE schemaname = 'public';")
+
+          test "$tablas" = "8"
+          echo "Ocho tablas creadas: OK"
+
+          # Comprobar que todas tienen RLS activado.
+          rls=$(docker exec grocio-pg-mvp-test \
+            psql -U postgres -d grocio_test -At \
+            -c "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relrowsecurity = true;")
+
+          test "$rls" = "8"
+          echo "RLS habilitado en ocho tablas: OK"
+
+          # Comprobar ambos indices unicos.
+          indices=$(docker exec grocio-pg-mvp-test \
+            psql -U postgres -d grocio_test -At \
+            -c "SELECT count(*) FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE i.indisunique = true AND c.relname IN ('ux_verificaciones_incidencia', 'ux_asignacion_activa_por_incidencia');")
+
+          test "$indices" = "2"
+          echo "Indices unicos creados: OK"
+
+          echo "Prueba inicial de PostgreSQL completada."
+
