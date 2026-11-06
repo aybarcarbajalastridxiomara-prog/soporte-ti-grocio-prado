@@ -11,6 +11,7 @@ from fastapi import (
 )
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -162,9 +163,35 @@ def registrar_verificacion(
         db.commit()
         return respuesta
 
+    
+    except IntegrityError as error:
+        db.rollback()
+
+        # Identificar el indice unico de verificaciones.
+        diagnostico = getattr(error.orig, "diag", None)
+        restriccion = getattr(
+            diagnostico,
+            "constraint_name",
+            None,
+        )
+
+        if restriccion == "ux_verificaciones_incidencia":
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Esta incidencia ya tiene una evaluacion "
+                    "registrada. Consulte su historial."
+                ),
+            ) from error
+
+        # Otros errores de integridad no deben
+        # confundirse con una evaluacion duplicada.
+        raise
+
     except Exception:
         db.rollback()
         raise
+
 
 
 
