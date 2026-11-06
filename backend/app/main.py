@@ -7,6 +7,7 @@ from app.routes.asignaciones import router as asignaciones_router
 from app.routes.intervenciones import router as intervenciones_router
 from app.routes.informes import router as informes_router
 from app.routes.verificaciones import router as verificaciones_router
+from app.routes.seguimiento import router as seguimiento_router
 
 
 app = FastAPI(
@@ -27,6 +28,7 @@ app.include_router(asignaciones_router)
 app.include_router(intervenciones_router)
 app.include_router(informes_router)
 app.include_router(verificaciones_router)
+app.include_router(seguimiento_router)
 
 
 @app.get("/")
