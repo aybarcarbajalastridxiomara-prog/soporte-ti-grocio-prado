@@ -1639,3 +1639,213 @@ jobs:
               api.dependency_overrides.clear()
           PY
 
+
+          
+      - name: Probar borradores de informes tecnicos
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from datetime import date, datetime, time, timezone
+          from types import SimpleNamespace
+          from uuid import uuid4
+
+          from fastapi.testclient import TestClient
+          from app.main import app as api
+          from app.auth import get_current_user
+          from app.db import get_db
+          from app.models import Incidencia
+
+          ticket_id = uuid4()
+          tecnico_id = uuid4()
+          area_id = uuid4()
+          fecha = datetime.now(timezone.utc)
+
+          ticket = SimpleNamespace(
+              id=ticket_id,
+              codigo="INC-2026-000015",
+              area_id=area_id,
+              reportante_id=uuid4(),
+              asunto="Falla de impresora",
+              descripcion="No imprime documentos",
+              equipo_sistema_afectado="Impresora HP",
+              ubicacion="Tesoreria",
+              fecha_inicio_problema=date(2026, 11, 5),
+              hora_inicio_problema=time(8, 30),
+              estado="En revisión",
+              prioridad="Media",
+              fecha_registro=fecha,
+              fecha_cierre=None,
+          )
+
+          def crear_intervencion(minutos):
+              return SimpleNamespace(
+                  id=uuid4(),
+                  tecnico_id=tecnico_id,
+                  diagnostico="Problema del controlador",
+                  acciones_realizadas="Revision del equipo",
+                  duracion_minutos=minutos,
+                  solucion_aplicada="Controlador actualizado",
+                  es_solucion_final=True,
+                  fecha_registro=fecha,
+              )
+
+          class BaseDatosSimulada:
+              def __init__(
+                  self,
+                  existe=True,
+                  participo=True,
+                  con_intervenciones=True,
+              ):
+                  self.existe = existe
+                  self.participo = participo
+                  self.intervenciones = (
+                      [
+                          crear_intervencion(30),
+                          crear_intervencion(45),
+                      ]
+                      if con_intervenciones else []
+                  )
+                  self.consulta_intervenciones = None
+
+              def get(self, modelo, identificador):
+                  if modelo is Incidencia:
+                      if identificador == ticket_id and self.existe:
+                          return ticket
+                  return None
+
+              def scalar(self, consulta):
+                  parametros = consulta.compile().params
+                  assert ticket_id in parametros.values()
+                  assert tecnico_id in parametros.values()
+
+                  return uuid4() if self.participo else None
+
+              def scalars(self, consulta):
+                  self.consulta_intervenciones = consulta
+                  return SimpleNamespace(
+                      all=lambda: self.intervenciones
+                  )
+
+          ruta = (
+              f"/api/incidencias/{ticket_id}"
+              "/informe-tecnico/borrador"
+          )
+
+          def probar(cliente, rol, db, esperado):
+              api.dependency_overrides[get_current_user] = (
+                  lambda: SimpleNamespace(
+                      id=tecnico_id,
+                      rol=rol,
+                  )
+              )
+              api.dependency_overrides[get_db] = lambda: db
+
+              respuesta = cliente.get(ruta)
+              assert respuesta.status_code == esperado, (
+                  respuesta.text
+              )
+              return respuesta
+
+          try:
+              with TestClient(api) as cliente:
+
+                  # Usuario sin iniciar sesion.
+                  respuesta = cliente.get(ruta)
+                  assert respuesta.status_code == 401
+
+                  # Representante no accede al borrador interno.
+                  probar(
+                      cliente,
+                      "REPRESENTANTE",
+                      BaseDatosSimulada(),
+                      403,
+                  )
+
+                  # Rol no autorizado.
+                  probar(
+                      cliente,
+                      "VISITANTE",
+                      BaseDatosSimulada(),
+                      403,
+                  )
+
+                  # Incidencia inexistente.
+                  probar(
+                      cliente,
+                      "JEFE",
+                      BaseDatosSimulada(existe=False),
+                      404,
+                  )
+
+                  # Tecnico que no participo en el ticket.
+                  probar(
+                      cliente,
+                      "ASISTENTE",
+                      BaseDatosSimulada(participo=False),
+                      403,
+                  )
+
+                  # Sin intervenciones no hay borrador.
+                  probar(
+                      cliente,
+                      "JEFE",
+                      BaseDatosSimulada(
+                          con_intervenciones=False
+                      ),
+                      409,
+                  )
+
+                  # Jefe, asistente y practicante autorizados.
+                  for rol in (
+                      "JEFE",
+                      "ASISTENTE",
+                      "PRACTICANTE",
+                  ):
+                      db = BaseDatosSimulada()
+
+                      respuesta = probar(
+                          cliente, rol, db, 200
+                      )
+
+                      datos = respuesta.json()
+
+                      assert datos["tipo_documento"] == (
+                          "BORRADOR_INFORME_TECNICO"
+                      )
+                      assert datos["incidencia_id"] == str(
+                          ticket_id
+                      )
+                      assert datos["codigo_incidencia"] == (
+                          "INC-2026-000015"
+                      )
+                      assert len(datos["intervenciones"]) == 2
+                      assert (
+                          datos["duracion_total_registrada_minutos"]
+                          == 75
+                      )
+
+                      # Verificar el filtro por ticket.
+                      consulta = db.consulta_intervenciones
+                      parametros = consulta.compile().params
+
+                      assert ticket_id in parametros.values()
+                      assert (
+                          "intervenciones.incidencia_id"
+                          in str(consulta.whereclause)
+                      )
+                      assert "ORDER BY" in str(consulta)
+
+                  # Identificador invalido.
+                  respuesta = cliente.get(
+                      "/api/incidencias/invalido"
+                      "/informe-tecnico/borrador"
+                  )
+                  assert respuesta.status_code == 422
+
+              print("Pruebas de informes tecnicos: OK")
+
+          finally:
+              api.dependency_overrides.clear()
+          PY
+
+
