@@ -2771,6 +2771,176 @@ jobs:
           PY
 
 
+          
+      - name: Probar conflictos de PostgreSQL en verificaciones
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from types import SimpleNamespace
+          from uuid import uuid4
+
+          from fastapi.testclient import TestClient
+          from sqlalchemy.exc import IntegrityError
+
+          from app.main import app as api
+          from app.auth import get_current_user
+          from app.db import get_db
+          from app.models import (
+              Incidencia,
+              Verificacion,
+              HistorialIncidencia,
+          )
+
+          ticket_id = uuid4()
+          usuario_id = uuid4()
+          area_id = uuid4()
+
+          class ErrorPostgres(Exception):
+              """Simula un error de integridad PostgreSQL."""
+
+              def __init__(self, restriccion):
+                  super().__init__(restriccion)
+                  self.diag = SimpleNamespace(
+                      constraint_name=restriccion
+                  )
+
+          class BaseDatosSimulada:
+              def __init__(self, restriccion):
+                  self.restriccion = restriccion
+                  self.registros = []
+                  self.revertido = False
+                  self.confirmado = False
+
+              def scalar(self, consulta):
+                  entidad = consulta.column_descriptions[0][
+                      "entity"
+                  ]
+
+                  assert ticket_id in (
+                      consulta.compile().params.values()
+                  )
+
+                  if entidad is Incidencia:
+                      return SimpleNamespace(
+                          id=ticket_id,
+                          area_id=area_id,
+                          estado="Cerrado",
+                      )
+
+                  if entidad is Verificacion:
+                      return None
+
+                  raise AssertionError("Consulta inesperada")
+
+              def add(self, objeto):
+                  self.registros.append(objeto)
+
+              def flush(self):
+                  # Simular el rechazo de PostgreSQL.
+                  raise IntegrityError(
+                      "INSERT INTO verificaciones",
+                      {},
+                      ErrorPostgres(self.restriccion),
+                  )
+
+              def commit(self):
+                  self.confirmado = True
+
+              def rollback(self):
+                  self.revertido = True
+
+          ruta = (
+              f"/api/incidencias/{ticket_id}/verificaciones"
+          )
+
+          datos = {
+              "resultado": "Conformidad",
+              "observaciones": "Atencion recibida.",
+          }
+
+          api.dependency_overrides[get_current_user] = (
+              lambda: SimpleNamespace(
+                  id=usuario_id,
+                  rol="REPRESENTANTE",
+                  area_id=area_id,
+              )
+          )
+
+          try:
+              with TestClient(
+                  api,
+                  raise_server_exceptions=False,
+              ) as cliente:
+
+                  # Error por evaluacion duplicada.
+                  db = BaseDatosSimulada(
+                      "ux_verificaciones_incidencia"
+                  )
+
+                  api.dependency_overrides[get_db] = (
+                      lambda: db
+                  )
+
+                  respuesta = cliente.post(
+                      ruta,
+                      json=datos,
+                  )
+
+                  assert respuesta.status_code == 409, (
+                      respuesta.text
+                  )
+
+                  assert (
+                      "ya tiene una evaluacion"
+                      in respuesta.json()["detail"]
+                  )
+
+                  assert db.revertido is True
+                  assert db.confirmado is False
+
+                  # La operacion falla antes del historial.
+                  assert len(db.registros) == 1
+                  assert isinstance(
+                      db.registros[0],
+                      Verificacion,
+                  )
+                  assert not any(
+                      isinstance(x, HistorialIncidencia)
+                      for x in db.registros
+                  )
+
+                  # Otro error de integridad no debe
+                  # presentarse como duplicidad.
+                  db_otro = BaseDatosSimulada(
+                      "fk_verificaciones_usuario"
+                  )
+
+                  api.dependency_overrides[get_db] = (
+                      lambda: db_otro
+                  )
+
+                  respuesta = cliente.post(
+                      ruta,
+                      json=datos,
+                  )
+
+                  assert respuesta.status_code == 500, (
+                      respuesta.text
+                  )
+
+                  assert db_otro.revertido is True
+                  assert db_otro.confirmado is False
+
+              print(
+                  "Pruebas de conflictos PostgreSQL: OK"
+              )
+
+          finally:
+              api.dependency_overrides.clear()
+          PY
+
+
+
 
 
 
