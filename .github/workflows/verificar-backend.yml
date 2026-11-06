@@ -2594,6 +2594,183 @@ jobs:
           PY
 
 
+          
+      - name: Probar seguimiento de incidencias observadas
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from datetime import datetime, timezone
+          from types import SimpleNamespace
+          from uuid import uuid4
+
+          from fastapi.testclient import TestClient
+
+          from app.main import app as api
+          from app.auth import get_current_user
+          from app.db import get_db
+
+          jefe_id = uuid4()
+          area_id = uuid4()
+          fecha = datetime.now(timezone.utc)
+
+          def crear_fila(codigo, asunto, detalle):
+              return {
+                  "incidencia_id": uuid4(),
+                  "codigo": codigo,
+                  "asunto": asunto,
+                  "area_id": area_id,
+                  "estado": "Cerrado",
+                  "fecha_cierre": fecha,
+                  "representante_id": uuid4(),
+                  "fecha_observacion": fecha,
+                  "detalle_observacion": detalle,
+              }
+
+          filas = [
+              crear_fila(
+                  "INC-2026-000015",
+                  "Falla de impresora",
+                  "La impresora sigue presentando fallas.",
+              ),
+              crear_fila(
+                  "INC-2026-000021",
+                  "Problema de conectividad",
+                  "La conexion se interrumpe.",
+              ),
+          ]
+
+          class BaseDatosSimulada:
+              def __init__(self, registros=None):
+                  self.filas = (
+                      filas if registros is None else registros
+                  )
+                  self.consulta = None
+
+              def execute(self, consulta):
+                  self.consulta = consulta
+                  return SimpleNamespace(
+                      mappings=lambda: SimpleNamespace(
+                          all=lambda: self.filas
+                      )
+                  )
+
+          ruta = "/api/seguimiento/observadas"
+
+          def configurar_perfil(rol):
+              api.dependency_overrides[
+                  get_current_user
+              ] = lambda: SimpleNamespace(
+                  id=jefe_id,
+                  rol=rol,
+              )
+
+          try:
+              with TestClient(api) as cliente:
+
+                  # Sin autenticacion.
+                  respuesta = cliente.get(ruta)
+                  assert respuesta.status_code == 401
+
+                  db = BaseDatosSimulada()
+
+                  api.dependency_overrides[
+                      get_db
+                  ] = lambda: db
+
+                  # El listado es exclusivo de jefatura.
+                  for rol in (
+                      "ASISTENTE",
+                      "PRACTICANTE",
+                      "REPRESENTANTE",
+                  ):
+                      configurar_perfil(rol)
+                      respuesta = cliente.get(ruta)
+
+                      assert respuesta.status_code == 403
+
+                  # Jefe de Sistemas autorizado.
+                  configurar_perfil("JEFE")
+
+                  respuesta = cliente.get(
+                      ruta + "?limite=2"
+                  )
+                  assert respuesta.status_code == 200, (
+                      respuesta.text
+                  )
+
+                  datos = respuesta.json()
+
+                  assert len(datos) == 2
+                  assert datos[0]["codigo"] == (
+                      "INC-2026-000015"
+                  )
+                  assert datos[1]["codigo"] == (
+                      "INC-2026-000021"
+                  )
+
+                  for registro in datos:
+                      assert registro["estado"] == "Cerrado"
+                      assert registro["detalle_observacion"]
+                      assert registro["representante_id"]
+                      assert registro["fecha_observacion"]
+
+                  # Verificar los filtros SQL construidos.
+                  consulta = db.consulta
+                  assert consulta is not None
+
+                  sql = str(consulta).lower()
+                  parametros = list(
+                      consulta.compile().params.values()
+                  )
+
+                  assert "join verificaciones" in sql
+                  assert "verificaciones.resultado" in sql
+                  assert "incidencias.estado" in sql
+                  assert "verificaciones.incidencia_id" in sql
+                  assert "incidencias.id" in sql
+
+                  assert "Cerrado" in parametros
+                  assert "Observación" in parametros
+                  assert 2 in parametros
+
+                  # Se solicita la evaluacion mas reciente.
+                  assert (
+                      "verificaciones.fecha_verificacion desc"
+                      in sql
+                  )
+                  assert "order by" in sql
+                  assert "limit" in sql
+
+                  # Sin incidencias observadas.
+                  db_vacia = BaseDatosSimulada(registros=[])
+
+                  api.dependency_overrides[
+                      get_db
+                  ] = lambda: db_vacia
+
+                  respuesta = cliente.get(ruta)
+                  assert respuesta.status_code == 200
+                  assert respuesta.json() == []
+
+                  # Limites invalidos.
+                  respuesta = cliente.get(
+                      ruta + "?limite=0"
+                  )
+                  assert respuesta.status_code == 422
+
+                  respuesta = cliente.get(
+                      ruta + "?limite=101"
+                  )
+                  assert respuesta.status_code == 422
+
+              print("Seguimiento de incidencias observadas: OK")
+
+          finally:
+              api.dependency_overrides.clear()
+          PY
+
+
+
 
 
 
