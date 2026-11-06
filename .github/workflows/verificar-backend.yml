@@ -2359,6 +2359,43 @@ jobs:
                       # La evaluacion no reabre el ticket.
                       assert db.ticket.estado == "Cerrado"
 
+                      
+                      # Intentar repetir o contradecir la evaluacion.
+                      contraria = (
+                          observacion
+                          if datos["resultado"] == "Conformidad"
+                          else conformidad
+                      )
+
+                      for intento in (datos, contraria):
+                          respuesta_duplicada = probar(
+                              cliente,
+                              "REPRESENTANTE",
+                              db,
+                              intento,
+                              409,
+                          )
+
+                          assert (
+                              "ya tiene una evaluacion"
+                              in respuesta_duplicada.json()["detail"]
+                          )
+
+                          # No debe crear nuevos registros.
+                          assert len(db.registros) == 2
+                          assert len([
+                              x for x in db.registros
+                              if isinstance(x, Verificacion)
+                          ]) == 1
+                          assert len([
+                              x for x in db.registros
+                              if isinstance(x, HistorialIncidencia)
+                          ]) == 1
+
+                          # El ticket permanece cerrado.
+                          assert db.ticket.estado == "Cerrado"
+
+
               print("Pruebas de conformidad y observaciones: OK")
 
           finally:
