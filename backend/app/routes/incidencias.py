@@ -92,6 +92,29 @@ class EventoHistorial(BaseModel):
     fecha_registro: datetime
 
 
+class CierreCrear(BaseModel):
+    """Sustento obligatorio para cerrar una incidencia."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
+    resumen_cierre: str = Field(
+        min_length=20,
+        max_length=2000,
+    )
+
+
+class CierreRespuesta(BaseModel):
+    """Resultado del cierre de una incidencia."""
+
+    incidencia_id: UUID
+    codigo: str
+    estado: EstadoIncidencia
+    cerrado_por_usuario_id: UUID
+    fecha_cierre: datetime
+
 
 
 @router.get(
@@ -361,4 +384,141 @@ def consultar_historial_incidencia(
     )
 
     return db.scalars(consulta).all()
+
+
+
+@router.post(
+    "/{incidencia_id}/cerrar",
+    response_model=CierreRespuesta,
+    summary="Cerrar una incidencia atendida",
+)
+def cerrar_incidencia(
+    incidencia_id: UUID,
+    datos: CierreCrear,
+    usuario_actual: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Cierra una incidencia con sustento tecnico."""
+
+    if usuario_actual.rol not in {
+        "ASISTENTE",
+        "PRACTICANTE",
+    }:
+        raise HTTPException(
+            status_code=403,
+            detail="No tiene permiso para cerrar incidencias.",
+        )
+
+    try:
+        incidencia = db.scalar(
+            select(Incidencia)
+            .where(Incidencia.id == incidencia_id)
+            .with_for_update()
+        )
+
+        if incidencia is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Incidencia no encontrada.",
+            )
+
+        if incidencia.estado == "Cerrado":
+            raise HTTPException(
+                status_code=409,
+                detail="La incidencia ya se encuentra cerrada.",
+            )
+
+        if incidencia.estado != "En revisión":
+            raise HTTPException(
+                status_code=409,
+                detail="La incidencia debe estar en revision.",
+            )
+
+        # Comprobar la asignacion activa.
+        asignacion = db.scalar(
+            select(Asignacion).where(
+                Asignacion.incidencia_id == incidencia_id,
+                Asignacion.fecha_fin.is_(None),
+            )
+        )
+
+        if asignacion is None:
+            raise HTTPException(
+                status_code=409,
+                detail="La incidencia no tiene responsable.",
+            )
+
+        if asignacion.tecnico_id != usuario_actual.id:
+            raise HTTPException(
+                status_code=403,
+                detail="Solo el responsable puede cerrar el ticket.",
+            )
+
+        # Comprobar la ultima intervencion del responsable.
+        ultima = db.scalar(
+            select(Intervencion)
+            .where(
+                Intervencion.incidencia_id == incidencia_id,
+                Intervencion.tecnico_id == usuario_actual.id,
+            )
+            .order_by(
+                Intervencion.fecha_registro.desc(),
+                Intervencion.id.desc(),
+            )
+            .limit(1)
+        )
+
+        if (
+            ultima is None
+            or not ultima.es_solucion_final
+            or not (ultima.solucion_aplicada or "").strip()
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Registre una intervencion final "
+                    "con la solucion aplicada antes de cerrar."
+                ),
+            )
+
+        fecha = datetime.now(timezone.utc)
+
+        # Registrar el cierre.
+        incidencia.estado = "Cerrado"
+        incidencia.fecha_cierre = fecha
+        incidencia.cerrado_por_usuario_id = usuario_actual.id
+
+        # Finalizar la asignacion activa.
+        asignacion.fecha_fin = fecha
+
+        # Registrar la justificacion en el historial.
+        evento = HistorialIncidencia(
+            incidencia_id=incidencia_id,
+            usuario_id=usuario_actual.id,
+            accion="CIERRE",
+            descripcion=(
+                "Cierre tecnico de incidencia. "
+                f"Resumen: {datos.resumen_cierre}. "
+                f"Solucion aplicada: {ultima.solucion_aplicada}"
+            ),
+        )
+
+        db.add(evento)
+        db.flush()
+
+        respuesta = CierreRespuesta(
+            incidencia_id=incidencia.id,
+            codigo=incidencia.codigo,
+            estado=incidencia.estado,
+            cerrado_por_usuario_id=usuario_actual.id,
+            fecha_cierre=fecha,
+        )
+
+        db.commit()
+        return respuesta
+
+    except Exception:
+        db.rollback()
+        raise
+
 
