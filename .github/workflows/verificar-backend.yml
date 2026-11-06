@@ -1215,3 +1215,260 @@ jobs:
           PY
 
 
+          
+      - name: Probar atenciones tecnicas
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from datetime import datetime, timezone
+          from types import SimpleNamespace
+          from uuid import uuid4
+
+          from fastapi.testclient import TestClient
+
+          from app.main import app as api
+          from app.auth import get_current_user
+          from app.db import get_db
+          from app.models import (
+              Incidencia,
+              Asignacion,
+              Intervencion,
+              HistorialIncidencia,
+          )
+
+          ticket_id = uuid4()
+          tecnico_id = uuid4()
+
+          datos = {
+              "diagnostico": "Falla del controlador",
+              "acciones_realizadas": "Reinstalacion del controlador",
+              "duracion_minutos": 45,
+              "solucion_aplicada": "Controlador reinstalado",
+              "es_solucion_final": True,
+          }
+
+          class BaseDatosSimulada:
+              def __init__(
+                  self,
+                  estado="En revisión",
+                  existe=True,
+                  asignada=True,
+                  responsable_id=None,
+              ):
+                  self.ticket = (
+                      SimpleNamespace(
+                          id=ticket_id,
+                          estado=estado,
+                      )
+                      if existe else None
+                  )
+
+                  self.asignacion = (
+                      SimpleNamespace(
+                          incidencia_id=ticket_id,
+                          tecnico_id=(
+                              responsable_id or tecnico_id
+                          ),
+                          fecha_fin=None,
+                      )
+                      if asignada else None
+                  )
+
+                  self.registros = []
+                  self.confirmado = False
+
+              def scalar(self, consulta):
+                  entidad = consulta.column_descriptions[0][
+                      "entity"
+                  ]
+
+                  if entidad is Incidencia:
+                      return self.ticket
+
+                  if entidad is Asignacion:
+                      return self.asignacion
+
+                  raise AssertionError("Consulta inesperada")
+
+              def add(self, objeto):
+                  self.registros.append(objeto)
+
+              def flush(self):
+                  for objeto in self.registros:
+                      if isinstance(objeto, Intervencion):
+                          if objeto.id is None:
+                              objeto.id = uuid4()
+
+                          if objeto.fecha_registro is None:
+                              objeto.fecha_registro = (
+                                  datetime.now(timezone.utc)
+                              )
+
+              def commit(self):
+                  self.confirmado = True
+
+              def rollback(self):
+                  self.confirmado = False
+
+          ruta = (
+              f"/api/incidencias/{ticket_id}/intervenciones"
+          )
+
+          def probar(cliente, rol, db, esperado, cuerpo=None):
+              api.dependency_overrides[get_current_user] = (
+                  lambda: SimpleNamespace(
+                      id=tecnico_id,
+                      rol=rol,
+                  )
+              )
+
+              api.dependency_overrides[get_db] = lambda: db
+
+              respuesta = cliente.post(
+                  ruta,
+                  json=datos if cuerpo is None else cuerpo,
+              )
+
+              assert respuesta.status_code == esperado, (
+                  respuesta.text
+              )
+
+              return respuesta
+
+          try:
+              with TestClient(api) as cliente:
+
+                  # Sin iniciar sesion.
+                  respuesta = cliente.post(
+                      ruta,
+                      json=datos,
+                  )
+                  assert respuesta.status_code == 401
+
+                  # Jefe y representante no registran
+                  # intervenciones mediante este endpoint.
+                  for rol in ("JEFE", "REPRESENTANTE"):
+                      probar(
+                          cliente,
+                          rol,
+                          BaseDatosSimulada(),
+                          403,
+                      )
+
+                  # Incidencia inexistente.
+                  probar(
+                      cliente,
+                      "ASISTENTE",
+                      BaseDatosSimulada(existe=False),
+                      404,
+                  )
+
+                  # Incidencia cerrada.
+                  probar(
+                      cliente,
+                      "PRACTICANTE",
+                      BaseDatosSimulada(estado="Cerrado"),
+                      409,
+                  )
+
+                  # Incidencia pendiente de asignacion.
+                  probar(
+                      cliente,
+                      "ASISTENTE",
+                      BaseDatosSimulada(estado="Pendiente"),
+                      409,
+                  )
+
+                  # Incidencia sin responsable activo.
+                  probar(
+                      cliente,
+                      "ASISTENTE",
+                      BaseDatosSimulada(asignada=False),
+                      409,
+                  )
+
+                  # Otro tecnico no puede intervenir.
+                  probar(
+                      cliente,
+                      "PRACTICANTE",
+                      BaseDatosSimulada(
+                          responsable_id=uuid4()
+                      ),
+                      403,
+                  )
+
+                  # Solucion final sin descripcion.
+                  probar(
+                      cliente,
+                      "ASISTENTE",
+                      BaseDatosSimulada(),
+                      422,
+                      {
+                          **datos,
+                          "solucion_aplicada": None,
+                      },
+                  )
+
+                  # Duracion negativa.
+                  probar(
+                      cliente,
+                      "ASISTENTE",
+                      BaseDatosSimulada(),
+                      422,
+                      {
+                          **datos,
+                          "duracion_minutos": -5,
+                      },
+                  )
+
+                  # Registro correcto por ambos perfiles.
+                  for rol in ("ASISTENTE", "PRACTICANTE"):
+                      db = BaseDatosSimulada()
+
+                      respuesta = probar(
+                          cliente, rol, db, 201
+                      )
+
+                      resultado = respuesta.json()
+
+                      assert resultado["tecnico_id"] == str(
+                          tecnico_id
+                      )
+                      assert resultado["incidencia_id"] == str(
+                          ticket_id
+                      )
+                      assert resultado["duracion_minutos"] == 45
+                      assert resultado["es_solucion_final"] is True
+                      assert db.confirmado is True
+
+                      intervenciones = [
+                          x for x in db.registros
+                          if isinstance(x, Intervencion)
+                      ]
+
+                      historial = [
+                          x for x in db.registros
+                          if isinstance(x, HistorialIncidencia)
+                      ]
+
+                      assert len(intervenciones) == 1
+                      assert len(historial) == 1
+
+                      assert intervenciones[0].tecnico_id == (
+                          tecnico_id
+                      )
+                      assert historial[0].accion == (
+                          "INTERVENCION"
+                      )
+                      assert historial[0].usuario_id == (
+                          tecnico_id
+                      )
+
+                      # La atencion no debe cerrar el ticket.
+                      assert db.ticket.estado == "En revisión"
+
+              print("Pruebas de atencion tecnica: OK")
+
+          finally:
+              api.dependency_overrides.clear()
+          PY
