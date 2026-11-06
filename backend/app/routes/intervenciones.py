@@ -190,3 +190,62 @@ def registrar_intervencion(
     except Exception:
         db.rollback()
         raise
+
+
+
+@router.get(
+    "/{incidencia_id}/intervenciones",
+    response_model=list[IntervencionRespuesta],
+    summary="Consultar atenciones tecnicas",
+)
+def consultar_intervenciones(
+    incidencia_id: UUID,
+    usuario_actual: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Consulta las intervenciones de una incidencia."""
+
+    roles_validos = {
+        "JEFE",
+        "ASISTENTE",
+        "PRACTICANTE",
+        "REPRESENTANTE",
+    }
+
+    if usuario_actual.rol not in roles_validos:
+        raise HTTPException(
+            status_code=403,
+            detail="No tiene permiso para consultar atenciones.",
+        )
+
+    # Comprobar que la incidencia exista.
+    incidencia = db.get(Incidencia, incidencia_id)
+
+    if incidencia is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Incidencia no encontrada.",
+        )
+
+    # El representante solo consulta incidencias de su area.
+    if usuario_actual.rol == "REPRESENTANTE":
+        if incidencia.area_id != usuario_actual.area_id:
+            raise HTTPException(
+                status_code=404,
+                detail="Incidencia no encontrada.",
+            )
+
+    # Recuperar las intervenciones en orden cronologico.
+    consulta = (
+        select(Intervencion)
+        .where(
+            Intervencion.incidencia_id == incidencia_id
+        )
+        .order_by(
+            Intervencion.fecha_registro.asc(),
+            Intervencion.id.asc(),
+        )
+    )
+
+    return db.scalars(consulta).all()
+
