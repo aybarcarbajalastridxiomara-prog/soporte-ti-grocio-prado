@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - "backend/**"
+      - "database/**"
       - ".github/workflows/verificar-backend.yml"
   workflow_dispatch:
 
