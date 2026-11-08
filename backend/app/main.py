@@ -1,5 +1,8 @@
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.config import get_settings
+
 
 from app.routes.usuarios import router as usuarios_router
 from app.routes.incidencias import router as incidencias_router
@@ -19,6 +22,29 @@ app = FastAPI(
     ),
     version="0.1.0",
 )
+
+# Permitir solicitudes solo desde el frontend autorizado.
+frontend_url = get_settings().frontend_url.strip().rstrip("/")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=(
+        [frontend_url] if frontend_url else []
+    ),
+    allow_credentials=False,
+    allow_methods=[
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+    ],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+    ],
+)
+
 
 
 # Registrar los módulos de nuestra API
