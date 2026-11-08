@@ -3358,5 +3358,161 @@ jobs:
 
           echo "Prueba real de cupos de representantes: OK"
 
+          
+          # Probar una sola asignacion activa por incidencia.
+          docker exec -i grocio-pg-mvp-test \
+            psql -U postgres -d grocio_test \
+            -v ON_ERROR_STOP=1 <<'SQL'
+
+          DO $$
+          DECLARE
+              v_area UUID := gen_random_uuid();
+              v_jefe UUID := gen_random_uuid();
+              v_rep UUID := gen_random_uuid();
+              v_tec1 UUID := gen_random_uuid();
+              v_tec2 UUID := gen_random_uuid();
+              v_ticket UUID := gen_random_uuid();
+              v_asignacion UUID := gen_random_uuid();
+              v_restriccion TEXT;
+              v_rechazado BOOLEAN := FALSE;
+          BEGIN
+              INSERT INTO public.areas (id, nombre)
+              VALUES (v_area, 'Area de asignaciones CI');
+
+              INSERT INTO auth.users (id)
+              VALUES
+                  (v_jefe), (v_rep),
+                  (v_tec1), (v_tec2);
+
+              INSERT INTO public.usuarios (
+                  id, area_id, nombre_completo,
+                  usuario, rol
+              )
+              VALUES
+                  (
+                      v_jefe, v_area, 'Jefe CI',
+                      'jefe_asig_ci', 'JEFE'
+                  ),
+                  (
+                      v_rep, v_area, 'Reportante CI',
+                      'rep_asig_ci', 'REPRESENTANTE'
+                  ),
+                  (
+                      v_tec1, v_area, 'Practicante CI',
+                      'prac_asig_ci', 'PRACTICANTE'
+                  ),
+                  (
+                      v_tec2, v_area, 'Asistente CI',
+                      'asis_asig_ci', 'ASISTENTE'
+                  );
+
+              INSERT INTO public.incidencias (
+                  id, area_id, reportante_id,
+                  asunto, descripcion
+              )
+              VALUES (
+                  v_ticket, v_area, v_rep,
+                  'Problema de red',
+                  'No existe conexion a internet'
+              );
+
+              -- Primera asignacion activa: permitida.
+              INSERT INTO public.asignaciones (
+                  id, incidencia_id, tecnico_id,
+                  asignado_por_id, origen_asignacion
+              )
+              VALUES (
+                  v_asignacion, v_ticket, v_tec1,
+                  v_jefe, 'JEFATURA'
+              );
+
+              -- Segundo tecnico activo: rechazado.
+              BEGIN
+                  INSERT INTO public.asignaciones (
+                      incidencia_id, tecnico_id,
+                      asignado_por_id, origen_asignacion
+                  )
+                  VALUES (
+                      v_ticket, v_tec2,
+                      v_jefe, 'JEFATURA'
+                  );
+
+              EXCEPTION WHEN unique_violation THEN
+                  GET STACKED DIAGNOSTICS
+                      v_restriccion = CONSTRAINT_NAME;
+
+                  IF v_restriccion <>
+                     'ux_asignacion_activa_por_incidencia'
+                  THEN
+                      RAISE;
+                  END IF;
+
+                  v_rechazado := TRUE;
+              END;
+
+              IF NOT v_rechazado THEN
+                  RAISE EXCEPTION
+                      'Fallo: dos tecnicos activos permitidos';
+              END IF;
+
+              -- Finalizar asignacion anterior.
+              UPDATE public.asignaciones
+              SET fecha_fin = now(),
+                  motivo_reasignacion =
+                      'Reasignacion por jefatura'
+              WHERE id = v_asignacion;
+
+              -- Nueva asignacion: ahora permitida.
+              INSERT INTO public.asignaciones (
+                  incidencia_id, tecnico_id,
+                  asignado_por_id, origen_asignacion
+              )
+              VALUES (
+                  v_ticket, v_tec2,
+                  v_jefe, 'JEFATURA'
+              );
+
+              -- Deben existir dos registros historicos.
+              IF (
+                  SELECT count(*)
+                  FROM public.asignaciones
+                  WHERE incidencia_id = v_ticket
+              ) <> 2 THEN
+                  RAISE EXCEPTION
+                      'Fallo: historial de asignaciones incorrecto';
+              END IF;
+
+              -- Solo el asistente debe seguir activo.
+              IF (
+                  SELECT count(*)
+                  FROM public.asignaciones
+                  WHERE incidencia_id = v_ticket
+                    AND fecha_fin IS NULL
+                    AND tecnico_id = v_tec2
+              ) <> 1 THEN
+                  RAISE EXCEPTION
+                      'Fallo: responsable activo incorrecto';
+              END IF;
+
+              IF (
+                  SELECT count(*)
+                  FROM public.asignaciones
+                  WHERE incidencia_id = v_ticket
+                    AND fecha_fin IS NULL
+              ) <> 1 THEN
+                  RAISE EXCEPTION
+                      'Fallo: cantidad incorrecta de responsables';
+              END IF;
+
+              RAISE NOTICE
+                  'Asignacion unica y reasignacion: OK';
+          END;
+          $$;
+
+          SQL
+
+          echo "Prueba real de asignaciones tecnicas: OK"
+
+
 
 
