@@ -1,0 +1,42 @@
+
+name: Verificar frontend Figma
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "frontend/**"
+      - ".github/workflows/verificar-frontend.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verificar-frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Instalar dependencias
+        working-directory: frontend
+        run: npm install --no-audit --no-fund
+
+      - name: Compilar aplicacion de Figma
+        working-directory: frontend
+        run: npm run build
+
+      - name: Verificar archivos generados
+        working-directory: frontend
+        run: |
+          test -f dist/index.html
+          test -d dist/assets
+          echo "Frontend Figma compilado correctamente"
