@@ -3513,6 +3513,135 @@ jobs:
 
           echo "Prueba real de asignaciones tecnicas: OK"
 
+          
+          # Probar la integridad del cierre de incidencias.
+          docker exec -i grocio-pg-mvp-test \
+            psql -U postgres -d grocio_test \
+            -v ON_ERROR_STOP=1 <<'SQL'
+
+          DO $$
+          DECLARE
+              v_area UUID := gen_random_uuid();
+              v_jefe UUID := gen_random_uuid();
+              v_rep UUID := gen_random_uuid();
+              v_ticket UUID := gen_random_uuid();
+              v_restriccion TEXT;
+              v_rechazado BOOLEAN;
+          BEGIN
+              INSERT INTO public.areas (id, nombre)
+              VALUES (v_area, 'Area de cierres CI');
+
+              INSERT INTO auth.users (id)
+              VALUES (v_jefe), (v_rep);
+
+              INSERT INTO public.usuarios (
+                  id, area_id, nombre_completo,
+                  usuario, rol
+              )
+              VALUES
+                  (
+                      v_jefe, v_area, 'Jefe de prueba',
+                      'jefe_cierre_ci', 'JEFE'
+                  ),
+                  (
+                      v_rep, v_area, 'Reportante de prueba',
+                      'rep_cierre_ci', 'REPRESENTANTE'
+                  );
+
+              INSERT INTO public.incidencias (
+                  id, area_id, reportante_id,
+                  asunto, descripcion
+              )
+              VALUES (
+                  v_ticket, v_area, v_rep,
+                  'Falla de impresora',
+                  'La impresora no responde'
+              );
+
+              -- Cierre sin fecha ni responsable:
+              -- PostgreSQL debe rechazarlo.
+              v_rechazado := FALSE;
+
+              BEGIN
+                  UPDATE public.incidencias
+                  SET estado = 'Cerrado'
+                  WHERE id = v_ticket;
+
+              EXCEPTION WHEN check_violation THEN
+                  GET STACKED DIAGNOSTICS
+                      v_restriccion = CONSTRAINT_NAME;
+
+                  IF v_restriccion <>
+                     'incidencias_cierre_consistente'
+                  THEN
+                      RAISE;
+                  END IF;
+
+                  v_rechazado := TRUE;
+              END;
+
+              IF NOT v_rechazado THEN
+                  RAISE EXCEPTION
+                      'Fallo: se permitio un cierre incompleto';
+              END IF;
+
+              -- No se permiten datos de cierre
+              -- mientras el ticket sigue pendiente.
+              v_rechazado := FALSE;
+
+              BEGIN
+                  UPDATE public.incidencias
+                  SET fecha_cierre = now(),
+                      cerrado_por_usuario_id = v_jefe
+                  WHERE id = v_ticket;
+
+              EXCEPTION WHEN check_violation THEN
+                  GET STACKED DIAGNOSTICS
+                      v_restriccion = CONSTRAINT_NAME;
+
+                  IF v_restriccion <>
+                     'incidencias_cierre_consistente'
+                  THEN
+                      RAISE;
+                  END IF;
+
+                  v_rechazado := TRUE;
+              END;
+
+              IF NOT v_rechazado THEN
+                  RAISE EXCEPTION
+                      'Fallo: ticket pendiente con datos de cierre';
+              END IF;
+
+              -- Cierre completo: permitido.
+              UPDATE public.incidencias
+              SET estado = 'Cerrado',
+                  fecha_cierre = now(),
+                  cerrado_por_usuario_id = v_jefe
+              WHERE id = v_ticket;
+
+              IF NOT EXISTS (
+                  SELECT 1
+                  FROM public.incidencias
+                  WHERE id = v_ticket
+                    AND estado = 'Cerrado'
+                    AND fecha_cierre IS NOT NULL
+                    AND cerrado_por_usuario_id = v_jefe
+              ) THEN
+                  RAISE EXCEPTION
+                      'Fallo: cierre completo incorrecto';
+              END IF;
+
+              RAISE NOTICE
+                  'Integridad del cierre de incidencias: OK';
+          END;
+          $$;
+
+          SQL
+
+          echo "Prueba real de cierre de incidencias: OK"
+
+
 
 
 
