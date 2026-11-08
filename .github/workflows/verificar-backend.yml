@@ -4314,6 +4314,90 @@ jobs:
 
           echo "Prueba real de aislamiento RLS: OK"
 
+          
+          # Verificar permisos de funciones y secuencia.
+          docker exec -i grocio-pg-mvp-test \
+            psql -U postgres -d grocio_test \
+            -v ON_ERROR_STOP=1 <<'SQL'
+
+          DO $$
+          DECLARE
+              v_rol TEXT;
+              v_funcion TEXT;
+              v_permiso TEXT;
+          BEGIN
+              FOREACH v_rol IN ARRAY ARRAY[
+                  'anon',
+                  'authenticated'
+              ]
+              LOOP
+                  -- Funciones de validacion protegidas.
+                  FOREACH v_funcion IN ARRAY ARRAY[
+                      'public.validar_cupo_representantes()',
+                      'public.validar_reportante_incidencia()'
+                  ]
+                  LOOP
+                      IF has_function_privilege(
+                          v_rol,
+                          v_funcion,
+                          'EXECUTE'
+                      ) THEN
+                          RAISE EXCEPTION
+                              'Funcion expuesta: % / %',
+                              v_rol, v_funcion;
+                      END IF;
+                  END LOOP;
+
+                  -- Secuencia de codigos protegida.
+                  FOREACH v_permiso IN ARRAY ARRAY[
+                      'USAGE',
+                      'SELECT',
+                      'UPDATE'
+                  ]
+                  LOOP
+                      IF has_sequence_privilege(
+                          v_rol,
+                          'public.incidencias_codigo_seq',
+                          v_permiso
+                      ) THEN
+                          RAISE EXCEPTION
+                              'Secuencia expuesta: % / %',
+                              v_rol, v_permiso;
+                      END IF;
+                  END LOOP;
+              END LOOP;
+
+              RAISE NOTICE
+                  'Funciones y secuencia protegidas: OK';
+          END;
+          $$;
+
+          SQL
+
+          echo "Prueba real de permisos adicionales: OK"
+
+          # El instalador debe rechazar una segunda ejecucion.
+          if docker exec grocio-pg-mvp-test \
+              psql -U postgres -d grocio_test \
+              -v ON_ERROR_STOP=1 \
+              -f /tmp/esquema.sql \
+              > /tmp/reinstalacion_ci.log 2>&1; then
+            echo "ERROR: se permitio reinstalar el esquema"
+            exit 1
+          fi
+
+          # Confirmar que fallo por la proteccion esperada.
+          if ! grep -q \
+              "Instalacion detenida: existen 8 tablas del sistema" \
+              /tmp/reinstalacion_ci.log; then
+            cat /tmp/reinstalacion_ci.log
+            echo "ERROR: la reinstalacion fallo por otra causa"
+            exit 1
+          fi
+
+          echo "Proteccion contra reinstalacion: OK"
+
+
 
 
 
