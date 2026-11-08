@@ -3987,3 +3987,172 @@ jobs:
 
           echo "Prueba real de pertenencia del reportante: OK"
 
+          
+          # Probar traslado de area y deshabilitacion.
+          docker exec -i grocio-pg-mvp-test \
+            psql -U postgres -d grocio_test \
+            -v ON_ERROR_STOP=1 <<'SQL'
+
+          DO $$
+          DECLARE
+              v_area_origen UUID := gen_random_uuid();
+              v_area_destino UUID := gen_random_uuid();
+              v_representante UUID := gen_random_uuid();
+              v_ticket_anterior UUID := gen_random_uuid();
+              v_ticket_nuevo UUID := gen_random_uuid();
+              v_restriccion TEXT;
+              v_rechazado BOOLEAN;
+          BEGIN
+              -- Crear dos areas municipales.
+              INSERT INTO public.areas (id, nombre)
+              VALUES
+                  (v_area_origen, 'Tesoreria traslado CI'),
+                  (v_area_destino, 'Contabilidad traslado CI');
+
+              INSERT INTO auth.users (id)
+              VALUES (v_representante);
+
+              INSERT INTO public.usuarios (
+                  id, area_id, nombre_completo,
+                  usuario, rol, habilitado
+              )
+              VALUES (
+                  v_representante, v_area_origen,
+                  'Representante trasladado',
+                  'rep_traslado_ci',
+                  'REPRESENTANTE', TRUE
+              );
+
+              -- Registrar un ticket en el area original.
+              INSERT INTO public.incidencias (
+                  id, area_id, reportante_id,
+                  asunto, descripcion
+              )
+              VALUES (
+                  v_ticket_anterior,
+                  v_area_origen,
+                  v_representante,
+                  'Impresora de Tesoreria',
+                  'La impresora no funciona'
+              );
+
+              -- Trasladar al representante a Contabilidad.
+              UPDATE public.usuarios
+              SET area_id = v_area_destino
+              WHERE id = v_representante;
+
+              -- El ticket anterior conserva su area.
+              IF NOT EXISTS (
+                  SELECT 1
+                  FROM public.incidencias
+                  WHERE id = v_ticket_anterior
+                    AND area_id = v_area_origen
+                    AND reportante_id = v_representante
+              ) THEN
+                  RAISE EXCEPTION
+                      'Fallo: se altero el ticket historico';
+              END IF;
+
+              -- No puede registrar nuevos tickets
+              -- para su antigua area.
+              v_rechazado := FALSE;
+
+              BEGIN
+                  INSERT INTO public.incidencias (
+                      area_id, reportante_id,
+                      asunto, descripcion
+                  )
+                  VALUES (
+                      v_area_origen, v_representante,
+                      'Nuevo ticket en Tesoreria',
+                      'Registro que debe rechazarse'
+                  );
+
+              EXCEPTION WHEN check_violation THEN
+                  GET STACKED DIAGNOSTICS
+                      v_restriccion = CONSTRAINT_NAME;
+
+                  IF v_restriccion <>
+                     'incidencias_reportante_area_valida'
+                  THEN
+                      RAISE;
+                  END IF;
+
+                  v_rechazado := TRUE;
+              END;
+
+              IF NOT v_rechazado THEN
+                  RAISE EXCEPTION
+                      'Fallo: se permitio registrar en el area anterior';
+              END IF;
+
+              -- Si puede registrar en su nueva area.
+              INSERT INTO public.incidencias (
+                  id, area_id, reportante_id,
+                  asunto, descripcion
+              )
+              VALUES (
+                  v_ticket_nuevo,
+                  v_area_destino,
+                  v_representante,
+                  'Problema de red en Contabilidad',
+                  'No hay conexion'
+              );
+
+              -- Deshabilitar al representante.
+              UPDATE public.usuarios
+              SET habilitado = FALSE
+              WHERE id = v_representante;
+
+              -- Un deshabilitado no puede crear tickets.
+              v_rechazado := FALSE;
+
+              BEGIN
+                  INSERT INTO public.incidencias (
+                      area_id, reportante_id,
+                      asunto, descripcion
+                  )
+                  VALUES (
+                      v_area_destino, v_representante,
+                      'Nuevo ticket de usuario inactivo',
+                      'Registro que debe rechazarse'
+                  );
+
+              EXCEPTION WHEN check_violation THEN
+                  GET STACKED DIAGNOSTICS
+                      v_restriccion = CONSTRAINT_NAME;
+
+                  IF v_restriccion <>
+                     'incidencias_reportante_area_valida'
+                  THEN
+                      RAISE;
+                  END IF;
+
+                  v_rechazado := TRUE;
+              END;
+
+              IF NOT v_rechazado THEN
+                  RAISE EXCEPTION
+                      'Fallo: usuario deshabilitado pudo registrar';
+              END IF;
+
+              -- Los registros anteriores permanecen intactos.
+              IF (
+                  SELECT count(*)
+                  FROM public.incidencias
+                  WHERE reportante_id = v_representante
+              ) <> 2 THEN
+                  RAISE EXCEPTION
+                      'Fallo: se alteraron incidencias historicas';
+              END IF;
+
+              RAISE NOTICE
+                  'Traslado y deshabilitacion de representante: OK';
+          END;
+          $$;
+
+          SQL
+
+          echo "Prueba real de traslado y deshabilitacion: OK"
+
+
