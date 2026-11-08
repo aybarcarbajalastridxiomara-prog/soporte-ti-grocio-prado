@@ -7,6 +7,42 @@
 
 BEGIN;
 
+-- Verificar que la instalacion sea sobre una base preparada.
+DO $$
+DECLARE
+    v_existentes INTEGER;
+BEGIN
+    IF to_regclass('auth.users') IS NULL THEN
+        RAISE EXCEPTION
+            'Instalacion detenida: Supabase Auth no esta disponible';
+    END IF;
+
+    SELECT count(*)
+    INTO v_existentes
+    FROM (
+        VALUES
+            ('areas'),
+            ('usuarios'),
+            ('incidencias'),
+            ('asignaciones'),
+            ('intervenciones'),
+            ('verificaciones'),
+            ('evidencias'),
+            ('historial_incidencias')
+    ) AS tablas(nombre)
+    WHERE to_regclass(
+        format('public.%I', tablas.nombre)
+    ) IS NOT NULL;
+
+    IF v_existentes > 0 THEN
+        RAISE EXCEPTION
+            'Instalacion detenida: existen % tablas del sistema',
+            v_existentes;
+    END IF;
+END;
+$$;
+
+
 -- 1. AREAS MUNICIPALES
 CREATE TABLE public.areas (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -267,9 +303,25 @@ REVOKE ALL ON TABLE
     public.areas, public.usuarios, public.incidencias, public.asignaciones,
     public.intervenciones, public.verificaciones, public.evidencias,
     public.historial_incidencias
-FROM anon, authenticated;
+
+FROM PUBLIC, anon, authenticated;
+
+-- Impedir acceso directo a la secuencia de codigos.
+REVOKE ALL ON SEQUENCE
+    public.incidencias_codigo_seq
+FROM PUBLIC, anon, authenticated;
+
+-- Impedir ejecucion directa de funciones de validacion.
+REVOKE EXECUTE ON FUNCTION
+    public.validar_cupo_representantes()
+FROM PUBLIC, anon, authenticated;
+
+REVOKE EXECUTE ON FUNCTION
+    public.validar_reportante_incidencia()
+FROM PUBLIC, anon, authenticated;
 
 COMMIT;
+
 
 -- OBSERVACIONES PENDIENTES ANTES DE INTEGRAR:
 -- A. Politicas RLS y operaciones seguras para JEFE, ASISTENTE, PRACTICANTE y REPRESENTANTE.
