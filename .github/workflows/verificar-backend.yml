@@ -4244,5 +4244,76 @@ jobs:
 
           echo "Prueba real de acceso restringido: OK"
 
+          
+          # Verificar RLS con permiso SELECT temporal.
+          docker exec -i grocio-pg-mvp-test \
+            psql -U postgres -d grocio_test \
+            -v ON_ERROR_STOP=1 <<'SQL'
+
+          BEGIN;
+
+          -- Deben existir incidencias de las pruebas anteriores.
+          DO $$
+          BEGIN
+              IF NOT EXISTS (
+                  SELECT 1 FROM public.incidencias
+              ) THEN
+                  RAISE EXCEPTION
+                      'Faltan incidencias de prueba';
+              END IF;
+          END;
+          $$;
+
+          -- Conceder permisos solo dentro de esta transaccion.
+          GRANT USAGE ON SCHEMA public TO authenticated;
+          GRANT SELECT ON public.incidencias TO authenticated;
+
+          -- Ejecutar la consulta como usuario autenticado.
+          SET LOCAL ROLE authenticated;
+
+          DO $$
+          DECLARE
+              v_total BIGINT;
+          BEGIN
+              SELECT count(*)
+              INTO v_total
+              FROM public.incidencias;
+
+              IF v_total <> 0 THEN
+                  RAISE EXCEPTION
+                      'RLS permitio visualizar % incidencias',
+                      v_total;
+              END IF;
+
+              RAISE NOTICE
+                  'RLS bloqueo la lectura de incidencias: OK';
+          END;
+          $$;
+
+          -- Revertir todos los permisos temporales.
+          ROLLBACK;
+
+          -- Confirmar que el permiso no quedo habilitado.
+          DO $$
+          BEGIN
+              IF has_table_privilege(
+                  'authenticated',
+                  'public.incidencias',
+                  'SELECT'
+              ) THEN
+                  RAISE EXCEPTION
+                      'El permiso temporal no fue revertido';
+              END IF;
+
+              RAISE NOTICE
+                  'Permisos temporales revertidos: OK';
+          END;
+          $$;
+
+          SQL
+
+          echo "Prueba real de aislamiento RLS: OK"
+
+
 
 
