@@ -32,14 +32,20 @@ def get_engine() -> Engine:
             "La base de datos debe ser PostgreSQL."
         )
 
+   
     return create_engine(
         url,
+        pool_size=1,
+        max_overflow=0,
+        pool_timeout=10,
         pool_pre_ping=True,
         connect_args={
             "connect_timeout": 10,
             "sslmode": "require",
+            "prepare_threshold": None,
         },
     )
+
 
 
 def get_db() -> Generator[Session, None, None]:
