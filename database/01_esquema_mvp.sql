@@ -115,6 +115,51 @@ CREATE TABLE public.incidencias (
     )
 );
 
+
+-- Validar el area y los permisos del reportante.
+CREATE FUNCTION public.validar_reportante_incidencia()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    -- Las referencias inexistentes seran rechazadas
+    -- por las claves foraneas de la tabla.
+
+    IF EXISTS (
+        SELECT 1
+        FROM public.areas
+        WHERE id = NEW.area_id
+    )
+    AND EXISTS (
+        SELECT 1
+        FROM public.usuarios
+        WHERE id = NEW.reportante_id
+    )
+    AND NOT EXISTS (
+        SELECT 1
+        FROM public.usuarios u
+        WHERE u.id = NEW.reportante_id
+          AND u.area_id = NEW.area_id
+          AND u.rol = 'REPRESENTANTE'
+          AND u.habilitado = TRUE
+    ) THEN
+        RAISE EXCEPTION
+            'El reportante debe ser un representante habilitado del area'
+            USING ERRCODE = '23514',
+                  CONSTRAINT = 'incidencias_reportante_area_valida';
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_validar_reportante_incidencia
+BEFORE INSERT OR UPDATE OF area_id, reportante_id
+ON public.incidencias
+FOR EACH ROW
+EXECUTE FUNCTION public.validar_reportante_incidencia();
+
 -- 4. ASIGNACIONES
 CREATE TABLE public.asignaciones (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
