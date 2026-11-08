@@ -3802,3 +3802,188 @@ jobs:
           SQL
 
           echo "Prueba real de relaciones y claves foraneas: OK"
+
+
+          
+          # Probar que el reportante pertenezca a su area.
+          docker exec -i grocio-pg-mvp-test \
+            psql -U postgres -d grocio_test \
+            -v ON_ERROR_STOP=1 <<'SQL'
+
+          DO $$
+          DECLARE
+              v_tesoreria UUID := gen_random_uuid();
+              v_contabilidad UUID := gen_random_uuid();
+              v_representante UUID := gen_random_uuid();
+              v_deshabilitado UUID := gen_random_uuid();
+              v_asistente UUID := gen_random_uuid();
+              v_ticket UUID := gen_random_uuid();
+              v_restriccion TEXT;
+          BEGIN
+              -- Preparar dos areas diferentes.
+              INSERT INTO public.areas (id, nombre)
+              VALUES
+                  (v_tesoreria, 'Tesoreria pertenencia CI'),
+                  (v_contabilidad, 'Contabilidad pertenencia CI');
+
+              INSERT INTO auth.users (id)
+              VALUES
+                  (v_representante),
+                  (v_deshabilitado),
+                  (v_asistente);
+
+              INSERT INTO public.usuarios (
+                  id, area_id, nombre_completo,
+                  usuario, rol, habilitado
+              )
+              VALUES
+                  (
+                      v_representante, v_tesoreria,
+                      'Representante Tesoreria',
+                      'rep_pertenencia_ci',
+                      'REPRESENTANTE', TRUE
+                  ),
+                  (
+                      v_deshabilitado, v_tesoreria,
+                      'Representante inactivo',
+                      'rep_inactivo_ci',
+                      'REPRESENTANTE', FALSE
+                  ),
+                  (
+                      v_asistente, v_tesoreria,
+                      'Asistente de Sistemas',
+                      'asistente_pertenencia_ci',
+                      'ASISTENTE', TRUE
+                  );
+
+              -- Caso 1: representante y area correctos.
+              INSERT INTO public.incidencias (
+                  id, area_id, reportante_id,
+                  asunto, descripcion
+              )
+              VALUES (
+                  v_ticket, v_tesoreria, v_representante,
+                  'Impresora de Tesoreria',
+                  'El equipo no responde'
+              );
+
+              -- Caso 2: representante de otra area.
+              BEGIN
+                  INSERT INTO public.incidencias (
+                      area_id, reportante_id,
+                      asunto, descripcion
+                  )
+                  VALUES (
+                      v_contabilidad, v_representante,
+                      'Incidencia de otra area',
+                      'Debe ser rechazada'
+                  );
+
+                  RAISE EXCEPTION
+                      'Fallo: incidencia entre areas permitida';
+
+              EXCEPTION WHEN check_violation THEN
+                  GET STACKED DIAGNOSTICS
+                      v_restriccion = CONSTRAINT_NAME;
+
+                  IF v_restriccion <>
+                     'incidencias_reportante_area_valida'
+                  THEN
+                      RAISE;
+                  END IF;
+              END;
+
+              -- Caso 3: representante deshabilitado.
+              BEGIN
+                  INSERT INTO public.incidencias (
+                      area_id, reportante_id,
+                      asunto, descripcion
+                  )
+                  VALUES (
+                      v_tesoreria, v_deshabilitado,
+                      'Incidencia de usuario inactivo',
+                      'Debe ser rechazada'
+                  );
+
+                  RAISE EXCEPTION
+                      'Fallo: representante inactivo permitido';
+
+              EXCEPTION WHEN check_violation THEN
+                  GET STACKED DIAGNOSTICS
+                      v_restriccion = CONSTRAINT_NAME;
+
+                  IF v_restriccion <>
+                     'incidencias_reportante_area_valida'
+                  THEN
+                      RAISE;
+                  END IF;
+              END;
+
+              -- Caso 4: un asistente no es reportante.
+              BEGIN
+                  INSERT INTO public.incidencias (
+                      area_id, reportante_id,
+                      asunto, descripcion
+                  )
+                  VALUES (
+                      v_tesoreria, v_asistente,
+                      'Incidencia registrada por asistente',
+                      'Debe ser rechazada'
+                  );
+
+                  RAISE EXCEPTION
+                      'Fallo: rol asistente permitido';
+
+              EXCEPTION WHEN check_violation THEN
+                  GET STACKED DIAGNOSTICS
+                      v_restriccion = CONSTRAINT_NAME;
+
+                  IF v_restriccion <>
+                     'incidencias_reportante_area_valida'
+                  THEN
+                      RAISE;
+                  END IF;
+              END;
+
+              -- Caso 5: impedir cambiar el area
+              -- de una incidencia ya registrada.
+              BEGIN
+                  UPDATE public.incidencias
+                  SET area_id = v_contabilidad
+                  WHERE id = v_ticket;
+
+                  RAISE EXCEPTION
+                      'Fallo: cambio de area indebido';
+
+              EXCEPTION WHEN check_violation THEN
+                  GET STACKED DIAGNOSTICS
+                      v_restriccion = CONSTRAINT_NAME;
+
+                  IF v_restriccion <>
+                     'incidencias_reportante_area_valida'
+                  THEN
+                      RAISE;
+                  END IF;
+              END;
+
+              -- El ticket original debe permanecer intacto.
+              IF NOT EXISTS (
+                  SELECT 1
+                  FROM public.incidencias
+                  WHERE id = v_ticket
+                    AND area_id = v_tesoreria
+                    AND reportante_id = v_representante
+              ) THEN
+                  RAISE EXCEPTION
+                      'Fallo: se modifico la incidencia valida';
+              END IF;
+
+              RAISE NOTICE
+                  'Pertenencia del reportante al area: OK';
+          END;
+          $$;
+
+          SQL
+
+          echo "Prueba real de pertenencia del reportante: OK"
+
