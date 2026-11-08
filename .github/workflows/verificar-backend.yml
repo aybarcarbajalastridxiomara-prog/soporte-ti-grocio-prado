@@ -4155,4 +4155,94 @@ jobs:
 
           echo "Prueba real de traslado y deshabilitacion: OK"
 
+          
+          # Verificar seguridad de acceso a las ocho tablas.
+          docker exec -i grocio-pg-mvp-test \
+            psql -U postgres -d grocio_test \
+            -v ON_ERROR_STOP=1 <<'SQL'
+
+          DO $$
+          DECLARE
+              v_tabla TEXT;
+              v_rol TEXT;
+              v_permiso TEXT;
+              v_rls BOOLEAN;
+          BEGIN
+              FOREACH v_tabla IN ARRAY ARRAY[
+                  'areas',
+                  'usuarios',
+                  'incidencias',
+                  'asignaciones',
+                  'intervenciones',
+                  'verificaciones',
+                  'evidencias',
+                  'historial_incidencias'
+              ]
+              LOOP
+                  -- Comprobar que RLS esta habilitado.
+                  SELECT c.relrowsecurity
+                  INTO v_rls
+                  FROM pg_class c
+                  JOIN pg_namespace n
+                    ON n.oid = c.relnamespace
+                  WHERE n.nspname = 'public'
+                    AND c.relname = v_tabla
+                    AND c.relkind = 'r';
+
+                  IF v_rls IS DISTINCT FROM TRUE THEN
+                      RAISE EXCEPTION
+                          'RLS no habilitado en: %',
+                          v_tabla;
+                  END IF;
+
+                  -- Los roles de cliente no deben
+                  -- disponer de permisos directos.
+                  FOREACH v_rol IN ARRAY ARRAY[
+                      'anon',
+                      'authenticated'
+                  ]
+                  LOOP
+                      FOREACH v_permiso IN ARRAY ARRAY[
+                          'SELECT',
+                          'INSERT',
+                          'UPDATE',
+                          'DELETE'
+                      ]
+                      LOOP
+                          IF has_table_privilege(
+                              v_rol,
+                              format('public.%I', v_tabla),
+                              v_permiso
+                          ) THEN
+                              RAISE EXCEPTION
+                                  'Acceso no autorizado: % / % / %',
+                                  v_rol, v_tabla, v_permiso;
+                          END IF;
+                      END LOOP;
+                  END LOOP;
+              END LOOP;
+
+              RAISE NOTICE
+                  'Proteccion de ocho tablas y permisos: OK';
+          END;
+          $$;
+
+          SQL
+
+          # Comprobar rechazo de lecturas como usuario anonimo
+          # y como usuario autenticado sin permisos directos.
+          for rol in anon authenticated; do
+            if docker exec grocio-pg-mvp-test \
+                psql -U postgres -d grocio_test \
+                -v ON_ERROR_STOP=1 \
+                -c "SET ROLE ${rol}; SELECT id FROM public.incidencias LIMIT 1;" \
+                >/dev/null 2>&1; then
+              echo "ERROR: el rol ${rol} pudo consultar incidencias"
+              exit 1
+            fi
+          done
+
+          echo "Prueba real de acceso restringido: OK"
+
+
 
