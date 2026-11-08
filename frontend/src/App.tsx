@@ -3,7 +3,7 @@ import "./index.css"
 
 type Profile = "systems" | "assistant" | "intern" | "area"
 type Status = "Pendiente" | "En revisión" | "Cerrado"
-type Evidence = { name: string size: number; url?: string }
+type Evidence = { name: string; size: number; url?: string }
 type Assignment = {
   tech: string
   by: string
