@@ -3642,6 +3642,163 @@ jobs:
           echo "Prueba real de cierre de incidencias: OK"
 
 
+          
+          # Probar relaciones entre incidencias, areas y usuarios.
+          docker exec -i grocio-pg-mvp-test \
+            psql -U postgres -d grocio_test \
+            -v ON_ERROR_STOP=1 <<'SQL'
 
+          DO $$
+          DECLARE
+              v_area UUID := gen_random_uuid();
+              v_representante UUID := gen_random_uuid();
+              v_ticket UUID := gen_random_uuid();
+              v_inexistente UUID := gen_random_uuid();
+              v_restriccion TEXT;
+              v_rechazado BOOLEAN;
+          BEGIN
+              -- Crear area y representante validos.
+              INSERT INTO public.areas (id, nombre)
+              VALUES (v_area, 'Area de relaciones CI');
 
+              INSERT INTO auth.users (id)
+              VALUES (v_representante);
 
+              INSERT INTO public.usuarios (
+                  id, area_id, nombre_completo,
+                  usuario, rol
+              )
+              VALUES (
+                  v_representante, v_area,
+                  'Representante de relaciones',
+                  'rep_relaciones_ci', 'REPRESENTANTE'
+              );
+
+              -- Rechazar un area inexistente.
+              v_rechazado := FALSE;
+
+              BEGIN
+                  INSERT INTO public.incidencias (
+                      area_id, reportante_id,
+                      asunto, descripcion
+                  )
+                  VALUES (
+                      v_inexistente, v_representante,
+                      'Prueba area inexistente',
+                      'No debe registrarse'
+                  );
+
+              EXCEPTION WHEN foreign_key_violation THEN
+                  GET STACKED DIAGNOSTICS
+                      v_restriccion = CONSTRAINT_NAME;
+
+                  IF v_restriccion <>
+                     'incidencias_area_id_fkey' THEN
+                      RAISE;
+                  END IF;
+
+                  v_rechazado := TRUE;
+              END;
+
+              IF NOT v_rechazado THEN
+                  RAISE EXCEPTION
+                      'Fallo: se acepto un area inexistente';
+              END IF;
+
+              -- Rechazar un reportante inexistente.
+              v_rechazado := FALSE;
+
+              BEGIN
+                  INSERT INTO public.incidencias (
+                      area_id, reportante_id,
+                      asunto, descripcion
+                  )
+                  VALUES (
+                      v_area, v_inexistente,
+                      'Prueba reportante inexistente',
+                      'No debe registrarse'
+                  );
+
+              EXCEPTION WHEN foreign_key_violation THEN
+                  GET STACKED DIAGNOSTICS
+                      v_restriccion = CONSTRAINT_NAME;
+
+                  IF v_restriccion <>
+                     'incidencias_reportante_id_fkey' THEN
+                      RAISE;
+                  END IF;
+
+                  v_rechazado := TRUE;
+              END;
+
+              IF NOT v_rechazado THEN
+                  RAISE EXCEPTION
+                      'Fallo: se acepto un usuario inexistente';
+              END IF;
+
+              -- Una incidencia valida debe registrarse.
+              INSERT INTO public.incidencias (
+                  id, area_id, reportante_id,
+                  asunto, descripcion
+              )
+              VALUES (
+                  v_ticket, v_area, v_representante,
+                  'Falla de computadora',
+                  'El equipo no enciende'
+              );
+
+              -- Verificar relaciones y codigo automatico.
+              IF NOT EXISTS (
+                  SELECT 1
+                  FROM public.incidencias
+                  WHERE id = v_ticket
+                    AND area_id = v_area
+                    AND reportante_id = v_representante
+                    AND codigo IS NOT NULL
+              ) THEN
+                  RAISE EXCEPTION
+                      'Fallo: incidencia valida incorrecta';
+              END IF;
+
+              -- Rechazar una incidencia anterior inexistente.
+              v_rechazado := FALSE;
+
+              BEGIN
+                  INSERT INTO public.incidencias (
+                      area_id, reportante_id,
+                      asunto, descripcion,
+                      incidencia_anterior_id
+                  )
+                  VALUES (
+                      v_area, v_representante,
+                      'Prueba reincidencia invalida',
+                      'Referencia inexistente',
+                      v_inexistente
+                  );
+
+              EXCEPTION WHEN foreign_key_violation THEN
+                  GET STACKED DIAGNOSTICS
+                      v_restriccion = CONSTRAINT_NAME;
+
+                  IF v_restriccion <>
+                     'incidencias_incidencia_anterior_id_fkey'
+                  THEN
+                      RAISE;
+                  END IF;
+
+                  v_rechazado := TRUE;
+              END;
+
+              IF NOT v_rechazado THEN
+                  RAISE EXCEPTION
+                      'Fallo: reincidencia inexistente aceptada';
+              END IF;
+
+              RAISE NOTICE
+                  'Relaciones de incidencias y usuarios: OK';
+          END;
+          $$;
+
+          SQL
+
+          echo "Prueba real de relaciones y claves foraneas: OK"
