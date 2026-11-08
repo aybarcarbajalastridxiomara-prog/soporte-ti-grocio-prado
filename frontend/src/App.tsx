@@ -645,8 +645,10 @@ function Login({
       )
     onAccess(account)
   }
-  if (page !== "login")
-    return <AuthAux page={page} back={() => setPage("login")} />
+  
+if (page !== "login")
+  return <AuthAux back={() => setPage("login")} />
+
   return (
     <main className="login-screen">
       <section className="login-panel">
