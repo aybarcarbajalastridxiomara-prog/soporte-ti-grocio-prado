@@ -93,11 +93,15 @@ def registrar_intervencion(
 ):
     """Registra una intervencion del tecnico responsable."""
 
-    # Solo personal tecnico autorizado.
+    
+    # Jefe, asistente y practicante pueden registrar
+    # intervenciones de tickets bajo su responsabilidad.
     if usuario_actual.rol not in {
+        "JEFE",
         "ASISTENTE",
         "PRACTICANTE",
     }:
+
         raise HTTPException(
             status_code=403,
             detail="No tiene permiso para registrar atenciones.",
