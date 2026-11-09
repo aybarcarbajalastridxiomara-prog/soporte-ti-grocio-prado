@@ -4962,4 +4962,193 @@ jobs:
           )
           PY
 
+          
+      - name: Paso 97 - Auditar permisos de los cuatro roles
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from types import SimpleNamespace
+          from uuid import uuid4
+
+          from fastapi.testclient import TestClient
+
+          from app.auth import get_current_user
+          from app.db import get_db
+          from app.main import app
+          from app.models import Incidencia
+
+          ticket = uuid4()
+          tecnico = uuid4()
+          area_propia = uuid4()
+          area_ajena = uuid4()
+
+          class BaseVigilada:
+              def __init__(self, ticket_ajeno=False):
+                  self.operaciones = 0
+                  self.consulta = None
+                  self.ticket_ajeno = ticket_ajeno
+
+              def get(self, modelo, identificador):
+                  self.operaciones += 1
+                  assert self.ticket_ajeno, 'Consulta DB inesperada'
+                  assert modelo is Incidencia
+                  return SimpleNamespace(
+                      id=identificador, area_id=area_ajena
+                  )
+
+              def scalars(self, consulta):
+                  self.operaciones += 1
+                  self.consulta = consulta
+                  return SimpleNamespace(all=lambda: [])
+
+          datos_ticket = {
+              'asunto': 'Impresora sin funcionar',
+              'descripcion': 'La impresora no responde',
+              'impacto': 'Parcialmente',
+          }
+          datos_asignar = {'tecnico_id': str(tecnico)}
+          datos_reasignar = {
+              'nuevo_tecnico_id': str(tecnico),
+              'motivo': 'Cambio de turno',
+          }
+          datos_intervencion = {
+              'diagnostico': 'Falla de controlador',
+              'acciones_realizadas': 'Revisar controlador',
+          }
+          datos_cierre = {
+              'resumen_cierre': 'Se verifico el funcionamiento del equipo.',
+          }
+          datos_verificacion = {'resultado': 'Conformidad'}
+
+          casos_denegados = [
+              ('JEFE', 'POST', '/api/incidencias', datos_ticket),
+              ('ASISTENTE', 'POST', '/api/incidencias', datos_ticket),
+              ('PRACTICANTE', 'POST', '/api/incidencias', datos_ticket),
+              ('REPRESENTANTE', 'POST', f'/api/asignaciones/{ticket}/tomar', None),
+              ('ASISTENTE', 'POST', f'/api/asignaciones/{ticket}/asignar', datos_asignar),
+              ('PRACTICANTE', 'POST', f'/api/asignaciones/{ticket}/asignar', datos_asignar),
+              ('REPRESENTANTE', 'POST', f'/api/asignaciones/{ticket}/asignar', datos_asignar),
+              ('ASISTENTE', 'POST', f'/api/asignaciones/{ticket}/reasignar', datos_reasignar),
+              ('PRACTICANTE', 'POST', f'/api/asignaciones/{ticket}/reasignar', datos_reasignar),
+              ('REPRESENTANTE', 'POST', f'/api/asignaciones/{ticket}/reasignar', datos_reasignar),
+              ('REPRESENTANTE', 'POST', f'/api/incidencias/{ticket}/intervenciones', datos_intervencion),
+              ('REPRESENTANTE', 'POST', f'/api/incidencias/{ticket}/cerrar', datos_cierre),
+              ('JEFE', 'POST', f'/api/incidencias/{ticket}/verificaciones', datos_verificacion),
+              ('ASISTENTE', 'POST', f'/api/incidencias/{ticket}/verificaciones', datos_verificacion),
+              ('PRACTICANTE', 'POST', f'/api/incidencias/{ticket}/verificaciones', datos_verificacion),
+              ('ASISTENTE', 'GET', '/api/seguimiento/observadas', None),
+              ('PRACTICANTE', 'GET', '/api/seguimiento/observadas', None),
+              ('REPRESENTANTE', 'GET', '/api/seguimiento/observadas', None),
+              ('REPRESENTANTE', 'GET', f'/api/incidencias/{ticket}/informe-tecnico/borrador', None),
+          ]
+
+          def preparar(rol, base):
+              perfil = SimpleNamespace(
+                  id=tecnico,
+                  area_id=area_propia,
+                  rol=rol,
+                  habilitado=True,
+              )
+              app.dependency_overrides[get_current_user] = lambda: perfil
+              app.dependency_overrides[get_db] = lambda: base
+
+          try:
+              with TestClient(app) as cliente:
+
+                  # Comprobar 19 accesos prohibidos.
+                  for rol, metodo, ruta, cuerpo in casos_denegados:
+                      base = BaseVigilada()
+                      preparar(rol, base)
+
+                      respuesta = cliente.request(
+                          metodo, ruta, json=cuerpo
+                      )
+
+                      assert respuesta.status_code == 403, (
+                          f'{rol} {metodo} {ruta}: '
+                          f'{respuesta.status_code} {respuesta.text}'
+                      )
+
+                      assert base.operaciones == 0, (
+                          f'Acceso a base no previsto: {rol} {ruta}'
+                      )
+
+                  print(
+                      f'Denegaciones por rol: '
+                      f'{len(casos_denegados)} OK'
+                  )
+
+                  # Verificar consultas de los cuatro roles.
+                  for rol in (
+                      'JEFE',
+                      'ASISTENTE',
+                      'PRACTICANTE',
+                      'REPRESENTANTE',
+                  ):
+                      base = BaseVigilada()
+                      preparar(rol, base)
+
+                      respuesta = cliente.get('/api/incidencias')
+
+                      assert respuesta.status_code == 200, (
+                          respuesta.text
+                      )
+                      assert base.operaciones == 1
+
+                      clausula = base.consulta.whereclause
+
+                      if rol == 'REPRESENTANTE':
+                          assert clausula is not None
+                          assert (
+                              'incidencias.area_id'
+                              in str(clausula)
+                          )
+                          assert area_propia in (
+                              base.consulta.compile().params.values()
+                          )
+                      else:
+                          assert clausula is None, (
+                              f'Filtro inesperado para {rol}'
+                          )
+
+                  print('Listado filtrado segun rol y area: OK')
+
+                  # Un representante no puede consultar otra area.
+                  rutas_ajenas = (
+                      f'/api/incidencias/{ticket}',
+                      f'/api/incidencias/{ticket}/historial',
+                      f'/api/incidencias/{ticket}/intervenciones',
+                      f'/api/incidencias/{ticket}/verificaciones',
+                  )
+
+                  for ruta in rutas_ajenas:
+                      base = BaseVigilada(ticket_ajeno=True)
+                      preparar('REPRESENTANTE', base)
+
+                      respuesta = cliente.get(ruta)
+
+                      assert respuesta.status_code == 404, (
+                          f'Acceso entre areas: '
+                          f'{ruta} {respuesta.text}'
+                      )
+
+                      assert base.operaciones == 1
+
+                  print(
+                      'Acceso entre areas rechazado '
+                      'en 4 consultas: OK'
+                  )
+
+          finally:
+              app.dependency_overrides.clear()
+
+          print(
+              'Paso 97 aprobado: '
+              'controles actuales auditados'
+          )
+          PY
+
+
 
