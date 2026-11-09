@@ -400,10 +400,15 @@ def cerrar_incidencia(
 ):
     """Cierra una incidencia con sustento tecnico."""
 
+    
+    # Jefe, asistente y practicante pueden cerrar
+    # incidencias bajo su responsabilidad.
     if usuario_actual.rol not in {
+        "JEFE",
         "ASISTENTE",
         "PRACTICANTE",
     }:
+
         raise HTTPException(
             status_code=403,
             detail="No tiene permiso para cerrar incidencias.",
