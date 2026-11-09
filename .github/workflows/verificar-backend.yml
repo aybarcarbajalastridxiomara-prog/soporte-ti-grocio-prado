@@ -5150,5 +5150,114 @@ jobs:
           )
           PY
 
+          
+      - name: Paso 98A - Auditar diferencias de permisos V3
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ast
+          import os
+          from pathlib import Path
+
+          def obtener_roles(ruta, funcion):
+              archivo = Path('app/routes') / ruta
+              arbol = ast.parse(archivo.read_text(encoding='utf-8'))
+              funciones = [
+                  nodo for nodo in arbol.body
+                  if isinstance(nodo, ast.FunctionDef)
+                  and nodo.name == funcion
+              ]
+              assert len(funciones) == 1, f'Ruta no encontrada: {funcion}'
+
+              for nodo in funciones[0].body:
+                  if not isinstance(nodo, ast.If):
+                      continue
+                  condicion = nodo.test
+                  if not isinstance(condicion, ast.Compare):
+                      continue
+                  if len(condicion.ops) != 1:
+                      continue
+                  campo = condicion.left
+                  if not (isinstance(campo, ast.Attribute)
+                          and campo.attr == 'rol'
+                          and isinstance(campo.value, ast.Name)
+                          and campo.value.id == 'usuario_actual'):
+                      continue
+                  valor = condicion.comparators[0]
+                  if isinstance(condicion.ops[0], ast.NotIn):
+                      if isinstance(valor, ast.Set):
+                          return {
+                              elemento.value for elemento in valor.elts
+                              if isinstance(elemento, ast.Constant)
+                          }, nodo.lineno
+                  if isinstance(condicion.ops[0], ast.NotEq):
+                      if isinstance(valor, ast.Constant):
+                          return {valor.value}, nodo.lineno
+
+              raise AssertionError(f'No se encontro control de rol: {funcion}')
+
+          tecnico = {'ASISTENTE', 'PRACTICANTE'}
+          tecnico_v3 = tecnico | {'JEFE'}
+          casos = [
+              ('incidencias.py', 'registrar_incidencia',
+               {'REPRESENTANTE'}, {'REPRESENTANTE'}),
+              ('asignaciones.py', 'asignar_incidencia',
+               {'JEFE'}, {'JEFE'}),
+              ('asignaciones.py', 'reasignar_incidencia',
+               {'JEFE'}, {'JEFE'}),
+              ('verificaciones.py', 'registrar_verificacion',
+               {'REPRESENTANTE'}, {'REPRESENTANTE'}),
+              ('asignaciones.py', 'tomar_incidencia',
+               tecnico, tecnico_v3),
+              ('intervenciones.py', 'registrar_intervencion',
+               tecnico, tecnico_v3),
+              ('incidencias.py', 'cerrar_incidencia',
+               tecnico, tecnico_v3),
+          ]
+
+          diferencias = []
+          filas = []
+          for ruta, funcion, actual_aceptado, objetivo_v3 in casos:
+              roles, linea = obtener_roles(ruta, funcion)
+              assert roles in (actual_aceptado, objetivo_v3), (
+                  f'Permisos inesperados en {ruta}:{linea} '
+                  f'para {funcion}: {sorted(roles)}'
+              )
+              conforme = roles == objetivo_v3
+              filas.append((funcion, ', '.join(sorted(roles)), conforme))
+              if not conforme:
+                  diferencias.append(funcion)
+                  print(
+                      f'::warning file=backend/app/routes/{ruta},'
+                      f'line={linea}::V3 pendiente: '
+                      f'{funcion} tambien debe permitir JEFE '
+                      f'solo para tickets propios'
+                  )
+
+          resumen = os.environ.get('GITHUB_STEP_SUMMARY')
+          if resumen:
+              with open(resumen, 'a', encoding='utf-8') as salida:
+                  salida.write('## Paso 98A - Auditoria de permisos V3\n\n')
+                  salida.write('| Operacion | Roles actuales | Conforme V3 |\n')
+                  salida.write('|---|---|---|\n')
+                  for funcion, roles, conforme in filas:
+                      salida.write(
+                          f'| `{funcion}` | {roles} | '
+                          f'{"Si" if conforme else "PENDIENTE"} |\n'
+                      )
+                  salida.write(
+                      '\nEste control no modifica permisos ni cierra la fase 1.\n'
+                  )
+
+          print(f'Controles examinados: {len(casos)}')
+          print(f'Diferencias V3 pendientes: {len(diferencias)}')
+          for funcion in diferencias:
+              print(f'PENDIENTE: {funcion}')
+          print('Paso 98A ejecutado: auditoria registrada; fase 1 abierta')
+          PY
+
+
 
 
