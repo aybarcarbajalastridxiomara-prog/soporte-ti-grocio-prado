@@ -1349,15 +1349,21 @@ jobs:
                   )
                   assert respuesta.status_code == 401
 
-                  # Jefe y representante no registran
-                  # intervenciones mediante este endpoint.
-                  for rol in ("JEFE", "REPRESENTANTE"):
-                      probar(
-                          cliente,
-                          rol,
-                          BaseDatosSimulada(),
-                          403,
-                      )
+                  # El JEFE no puede intervenir tickets ajenos.
+                  probar(
+                      cliente,
+                      "JEFE",
+                      BaseDatosSimulada(responsable_id=uuid4()),
+                      403,
+                  )
+
+                  # El representante no puede registrar intervenciones.
+                  probar(
+                      cliente,
+                      "REPRESENTANTE",
+                      BaseDatosSimulada(),
+                      403,
+                  )
 
                   # Incidencia inexistente.
                   probar(
