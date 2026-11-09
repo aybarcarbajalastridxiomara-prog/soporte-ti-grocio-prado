@@ -4700,3 +4700,266 @@ jobs:
 
           echo "Paso 95 aprobado: accesos indebidos rechazados"
 
+          
+      - name: Paso 96 - Probar concurrencia y cuentas deshabilitadas
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Contenedor efimero: NO usa Supabase ni produccion.
+          contenedor="grocio-pg-paso96"
+          docker run --detach --rm \
+            --name "$contenedor" \
+            --publish 127.0.0.1::5432 \
+            -e POSTGRES_PASSWORD=clave_solo_ci \
+            -e POSTGRES_DB=grocio_ci \
+            -v "$GITHUB_WORKSPACE/database:/sql:ro" \
+            postgres:16
+
+          trap 'docker rm -f "$contenedor" >/dev/null 2>&1 || true' EXIT
+
+          listo=0
+          for intento in {1..30}; do
+            if docker exec "$contenedor" \
+                pg_isready -U postgres -d grocio_ci >/dev/null 2>&1; then
+              listo=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$listo" -ne 1 ]; then
+            echo "ERROR: PostgreSQL temporal no inicio"
+            exit 1
+          fi
+
+          # Preparar base independiente con identidades de prueba.
+          docker exec -i "$contenedor" \
+            psql -X -U postgres -d grocio_ci -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE SCHEMA auth;
+          CREATE TABLE auth.users (id UUID PRIMARY KEY);
+          CREATE ROLE anon NOLOGIN;
+          CREATE ROLE authenticated NOLOGIN;
+          CREATE ROLE soporte_ti_api LOGIN NOSUPERUSER NOBYPASSRLS NOINHERIT;
+          SQL
+
+          docker exec "$contenedor" \
+            psql -X -U postgres -d grocio_ci -v ON_ERROR_STOP=1 \
+            -f /sql/01_esquema_mvp.sql
+          docker exec "$contenedor" \
+            psql -X -U postgres -d grocio_ci -v ON_ERROR_STOP=1 \
+            -f /sql/02_permisos_backend.sql
+
+          # Un representante, dos tecnicos y un ticket de prueba.
+          docker exec -i "$contenedor" \
+            psql -X -U postgres -d grocio_ci -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO public.areas (id, nombre) VALUES
+            ('00000000-0000-4000-8000-000000000001', 'Area CI Paso 96');
+
+          INSERT INTO auth.users (id) VALUES
+            ('00000000-0000-4000-8000-000000000101'),
+            ('00000000-0000-4000-8000-000000000201'),
+            ('00000000-0000-4000-8000-000000000202');
+
+          INSERT INTO public.usuarios
+            (id, area_id, nombre_completo, usuario, rol)
+          VALUES
+            ('00000000-0000-4000-8000-000000000101',
+             '00000000-0000-4000-8000-000000000001',
+             'Representante CI', 'representante_ci', 'REPRESENTANTE'),
+            ('00000000-0000-4000-8000-000000000201',
+             '00000000-0000-4000-8000-000000000001',
+             'Tecnico Uno CI', 'tecnico_uno_ci', 'ASISTENTE'),
+            ('00000000-0000-4000-8000-000000000202',
+             '00000000-0000-4000-8000-000000000001',
+             'Tecnico Dos CI', 'tecnico_dos_ci', 'PRACTICANTE');
+
+          INSERT INTO public.incidencias
+            (id, area_id, reportante_id, asunto, descripcion)
+          VALUES
+            ('00000000-0000-4000-8000-000000000301',
+             '00000000-0000-4000-8000-000000000001',
+             '00000000-0000-4000-8000-000000000101',
+             'Incidencia de concurrencia CI',
+             'Dos tecnicos intentan tomar el mismo ticket');
+          SQL
+
+          # Obtener puerto local temporal de Docker.
+          publicado="$(docker port "$contenedor" 5432/tcp)"
+          export CI_PG_PORT="${publicado##*:}"
+          if [[ ! "$CI_PG_PORT" =~ ^[0-9]+$ ]]; then
+            echo "ERROR: no se obtuvo el puerto PostgreSQL"
+            exit 1
+          fi
+
+          # Pruebas de concurrencia y perfiles con Python.
+          PYTHONPATH="$GITHUB_WORKSPACE/backend" python - <<'PY'
+          import os
+          from concurrent.futures import ThreadPoolExecutor
+          from threading import Barrier
+          from types import SimpleNamespace
+          from uuid import UUID, uuid4
+
+          import psycopg
+          from fastapi.testclient import TestClient
+          from app.auth import get_identity
+          from app.db import get_db
+          from app.main import app
+          from app.models import Usuario
+
+          DB = dict(
+              host="127.0.0.1",
+              port=int(os.environ["CI_PG_PORT"]),
+              dbname="grocio_ci",
+              user="postgres",
+              password="clave_solo_ci",
+              connect_timeout=8,
+          )
+
+          TICKET = UUID("00000000-0000-4000-8000-000000000301")
+          TECNICOS = (
+              UUID("00000000-0000-4000-8000-000000000201"),
+              UUID("00000000-0000-4000-8000-000000000202"),
+          )
+
+          # PRUEBA 1: dos inserciones simultaneas.
+          barrera = Barrier(2)
+
+          def tomar(tecnico):
+              with psycopg.connect(**DB) as conn:
+                  with conn.cursor() as cur:
+                      cur.execute("SET ROLE soporte_ti_api")
+                      cur.execute("SET statement_timeout = '15000ms'")
+                      barrera.wait(timeout=10)
+
+                      try:
+                          cur.execute(
+                              """INSERT INTO public.asignaciones
+                                 (incidencia_id, tecnico_id,
+                                  asignado_por_id, origen_asignacion)
+                                 VALUES (%s, %s, %s, 'AUTOTOMA')""",
+                              (TICKET, tecnico, tecnico),
+                          )
+                          conn.commit()
+                          return "CREADA"
+
+                      except psycopg.errors.UniqueViolation:
+                          conn.rollback()
+                          return "RECHAZADA_POR_UNICIDAD"
+
+          with ThreadPoolExecutor(max_workers=2) as ejecutor:
+              resultados = list(ejecutor.map(tomar, TECNICOS))
+
+          assert sorted(resultados) == [
+              "CREADA",
+              "RECHAZADA_POR_UNICIDAD",
+          ], f"Resultado inesperado: {resultados}"
+
+          # PRUEBA 2: una sola asignacion activa.
+          with psycopg.connect(**DB) as conn:
+              with conn.cursor() as cur:
+                  cur.execute(
+                      """SELECT COUNT(*)
+                         FROM public.asignaciones
+                         WHERE incidencia_id = %s
+                           AND fecha_fin IS NULL""",
+                      (TICKET,),
+                  )
+                  assert cur.fetchone()[0] == 1, (
+                      "Debe existir una sola asignacion activa"
+                  )
+
+                  # Conservar asignacion anterior.
+                  cur.execute(
+                      """UPDATE public.asignaciones
+                         SET fecha_fin = now() + interval '1 second'
+                         WHERE incidencia_id = %s
+                           AND fecha_fin IS NULL
+                         RETURNING tecnico_id""",
+                      (TICKET,),
+                  )
+
+                  anterior = cur.fetchone()[0]
+                  siguiente = next(
+                      t for t in TECNICOS if t != anterior
+                  )
+
+                  cur.execute(
+                      """INSERT INTO public.asignaciones
+                         (incidencia_id, tecnico_id,
+                          asignado_por_id, origen_asignacion)
+                         VALUES (%s, %s, %s, 'AUTOTOMA')""",
+                      (TICKET, siguiente, siguiente),
+                  )
+
+                  cur.execute(
+                      """SELECT COUNT(*),
+                                COUNT(*) FILTER (
+                                    WHERE fecha_fin IS NULL
+                                )
+                         FROM public.asignaciones
+                         WHERE incidencia_id = %s""",
+                      (TICKET,),
+                  )
+
+                  total, activas = cur.fetchone()
+                  assert (total, activas) == (2, 1), (
+                      f"Historial incorrecto: {(total, activas)}"
+                  )
+
+          print("Concurrencia real: un responsable activo - OK")
+          print("Historial de asignaciones conservado - OK")
+
+          # PRUEBA 3: cuentas deshabilitadas e inexistentes.
+          identidad = uuid4()
+
+          class BaseSimulada:
+              def __init__(self, perfil):
+                  self.perfil = perfil
+
+              def get(self, modelo, identificador):
+                  assert modelo is Usuario
+                  assert identificador == identidad
+                  return self.perfil
+
+          try:
+              with TestClient(app) as cliente:
+                  for caso, perfil in (
+                      (
+                          "cuenta deshabilitada",
+                          SimpleNamespace(habilitado=False),
+                      ),
+                      ("perfil inexistente", None),
+                  ):
+                      app.dependency_overrides.clear()
+
+                      app.dependency_overrides[
+                          get_identity
+                      ] = lambda: identidad
+
+                      app.dependency_overrides[
+                          get_db
+                      ] = lambda perfil=perfil: BaseSimulada(perfil)
+
+                      for ruta in (
+                          "/api/me",
+                          "/api/incidencias",
+                      ):
+                          respuesta = cliente.get(ruta)
+
+                          assert respuesta.status_code == 403, (
+                              f"{caso} obtuvo "
+                              f"{respuesta.status_code} "
+                              f"en {ruta}: {respuesta.text}"
+                          )
+
+                      print(f"Acceso denegado para {caso} - OK")
+
+          finally:
+              app.dependency_overrides.clear()
+
+          print(
+              "Paso 96 aprobado: concurrencia y cuentas bloqueadas"
+          )
+          PY
+
+
