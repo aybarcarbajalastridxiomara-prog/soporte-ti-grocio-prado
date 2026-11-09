@@ -1857,8 +1857,6 @@ jobs:
           finally:
               api.dependency_overrides.clear()
           PY
-
-
           
       - name: Probar cierre de incidencias
         working-directory: backend
@@ -1990,12 +1988,19 @@ jobs:
                   respuesta = cliente.post(ruta, json=datos)
                   assert respuesta.status_code == 401
 
-                  # Solo asistente o practicante.
-                  for rol in ("JEFE", "REPRESENTANTE"):
-                      probar(
-                          cliente, rol,
-                          BaseDatosSimulada(), 403,
-                      )
+                  
+                  # El JEFE no puede cerrar tickets de otro responsable.
+                  probar(
+                      cliente, "JEFE",
+                      BaseDatosSimulada(responsable_id=uuid4()), 403,
+                  )
+
+                  # El representante no puede cerrar tickets.
+                  probar(
+                      cliente, "REPRESENTANTE",
+                      BaseDatosSimulada(), 403,
+                  )
+
 
                   # Incidencia inexistente.
                   probar(
