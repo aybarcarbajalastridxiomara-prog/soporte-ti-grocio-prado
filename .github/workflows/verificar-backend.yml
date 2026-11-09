@@ -4397,6 +4397,197 @@ jobs:
 
           echo "Proteccion contra reinstalacion: OK"
 
+          
+      - name: Paso 93 - Probar permisos y RLS del backend
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Base temporal; no se conecta al Supabase real.
+          docker run --detach --rm \
+            --name grocio-pg-paso93 \
+            -e POSTGRES_PASSWORD=clave_ci_temporal \
+            -e POSTGRES_DB=grocio_ci \
+            -v "$GITHUB_WORKSPACE/database:/sql:ro" \
+            postgres:16
+
+          trap 'docker rm -f grocio-pg-paso93 >/dev/null 2>&1 || true' EXIT
+
+          listo=0
+          for intento in {1..30}; do
+            if docker exec grocio-pg-paso93 \
+                pg_isready -U postgres -d grocio_ci >/dev/null 2>&1; then
+              listo=1
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$listo" -ne 1 ]; then
+            echo "PostgreSQL temporal no inicio"
+            exit 1
+          fi
+
+          # Preparar las dependencias de la base de prueba.
+          docker exec -i grocio-pg-paso93 \
+            psql -U postgres -d grocio_ci -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE SCHEMA auth;
+          CREATE TABLE auth.users (id UUID PRIMARY KEY);
+          CREATE ROLE anon NOLOGIN;
+          CREATE ROLE authenticated NOLOGIN;
+          CREATE ROLE soporte_ti_api LOGIN NOSUPERUSER NOBYPASSRLS NOINHERIT;
+          SQL
+
+          # Instalar los dos scripts en PostgreSQL temporal.
+          docker exec grocio-pg-paso93 \
+            psql -U postgres -d grocio_ci -v ON_ERROR_STOP=1 \
+            -f /sql/01_esquema_mvp.sql
+
+          docker exec grocio-pg-paso93 \
+            psql -U postgres -d grocio_ci -v ON_ERROR_STOP=1 \
+            -f /sql/02_permisos_backend.sql
+
+          # Verificar permisos, RLS y accesos prohibidos.
+          docker exec -i grocio-pg-paso93 \
+            psql -U postgres -d grocio_ci -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE
+              t TEXT;
+              total_politicas INTEGER;
+          BEGIN
+              FOR t IN SELECT unnest(ARRAY[
+                  'areas', 'usuarios', 'incidencias', 'asignaciones',
+                  'intervenciones', 'verificaciones', 'evidencias',
+                  'historial_incidencias'
+              ]) LOOP
+
+                  IF NOT (
+                      SELECT relrowsecurity
+                      FROM pg_class
+                      WHERE oid = format('public.%I', t)::regclass
+                  ) THEN
+                      RAISE EXCEPTION 'RLS desactivado en %', t;
+                  END IF;
+
+                  IF NOT has_table_privilege(
+                      'soporte_ti_api', format('public.%I', t), 'SELECT'
+                  ) THEN
+                      RAISE EXCEPTION 'Falta SELECT para API en %', t;
+                  END IF;
+
+                  IF has_table_privilege(
+                      'soporte_ti_api', format('public.%I', t), 'DELETE'
+                  ) OR has_table_privilege(
+                      'anon', format('public.%I', t), 'SELECT'
+                  ) OR has_table_privilege(
+                      'authenticated', format('public.%I', t), 'SELECT'
+                  ) THEN
+                      RAISE EXCEPTION 'Permiso indebido sobre %', t;
+                  END IF;
+
+              END LOOP;
+
+              # Esta sección SQL no admite comentarios con #.
+              -- Areas y usuarios: solo lectura para la API.
+              FOR t IN SELECT unnest(ARRAY[
+                  'areas', 'usuarios'
+              ]) LOOP
+
+                  IF has_table_privilege(
+                      'soporte_ti_api', format('public.%I', t), 'INSERT'
+                  ) OR has_table_privilege(
+                      'soporte_ti_api', format('public.%I', t), 'UPDATE'
+                  ) THEN
+                      RAISE EXCEPTION 'API puede modificar %', t;
+                  END IF;
+
+              END LOOP;
+
+              -- Tablas donde solo se permite insertar.
+              FOR t IN SELECT unnest(ARRAY[
+                  'intervenciones', 'verificaciones', 'evidencias',
+                  'historial_incidencias'
+              ]) LOOP
+
+                  IF NOT has_table_privilege(
+                      'soporte_ti_api', format('public.%I', t), 'INSERT'
+                  ) OR has_table_privilege(
+                      'soporte_ti_api', format('public.%I', t), 'UPDATE'
+                  ) THEN
+                      RAISE EXCEPTION 'Permiso incorrecto en %', t;
+                  END IF;
+
+              END LOOP;
+
+              -- Tablas que requieren INSERT y UPDATE.
+              FOR t IN SELECT unnest(ARRAY[
+                  'incidencias', 'asignaciones'
+              ]) LOOP
+
+                  IF NOT has_table_privilege(
+                      'soporte_ti_api', format('public.%I', t), 'INSERT'
+                  ) OR NOT has_table_privilege(
+                      'soporte_ti_api', format('public.%I', t), 'UPDATE'
+                  ) THEN
+                      RAISE EXCEPTION 'Faltan INSERT/UPDATE sobre %', t;
+                  END IF;
+
+              END LOOP;
+
+              -- Secuencia para los codigos de tickets.
+              IF NOT has_sequence_privilege(
+                  'soporte_ti_api',
+                  'public.incidencias_codigo_seq',
+                  'USAGE'
+              ) THEN
+                  RAISE EXCEPTION 'API no puede usar secuencia de tickets';
+              END IF;
+
+              -- Verificar las 16 politicas esperadas.
+              SELECT count(*)
+              INTO total_politicas
+              FROM pg_policies
+              WHERE schemaname = 'public'
+                AND policyname IN (
+                    'api_lectura',
+                    'api_insercion',
+                    'api_actualizacion'
+                );
+
+              IF total_politicas <> 16 THEN
+                  RAISE EXCEPTION
+                      'Se esperaban 16 politicas y hay %',
+                      total_politicas;
+              END IF;
+
+              RAISE NOTICE 'Permisos y politicas Paso 92: OK';
+          END;
+          $$;
+
+          -- Probar lectura con el rol restringido.
+          INSERT INTO public.areas(nombre)
+          VALUES ('Area CI Paso 93');
+
+          SET ROLE soporte_ti_api;
+
+          DO $$
+          BEGIN
+              IF (
+                  SELECT count(*)
+                  FROM public.areas
+                  WHERE nombre = 'Area CI Paso 93'
+              ) <> 1 THEN
+                  RAISE EXCEPTION 'Lectura real del rol API bloqueada';
+              END IF;
+          END;
+          $$;
+
+          RESET ROLE;
+          SQL
+
+          echo "Paso 93: prueba de permisos y RLS aprobada"
+
+
 
 
 
