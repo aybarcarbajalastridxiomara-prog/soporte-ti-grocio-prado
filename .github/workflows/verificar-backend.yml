@@ -4586,8 +4586,117 @@ jobs:
 
           echo "Paso 93: prueba de permisos y RLS aprobada"
 
+          
+      - name: Paso 95 - Probar accesos denegados en PostgreSQL temporal
+        shell: bash
+        run: |
+          set -euo pipefail
 
+          # Solo usa PostgreSQL temporal de GitHub Actions.
+          contenedor="grocio-pg-paso95"
+          docker run --detach --rm \
+            --name "$contenedor" \
+            -e POSTGRES_PASSWORD=clave_solo_ci \
+            -e POSTGRES_DB=grocio_ci \
+            -v "$GITHUB_WORKSPACE/database:/sql:ro" \
+            postgres:16
 
+          trap 'docker rm -f "$contenedor" >/dev/null 2>&1 || true' EXIT
 
+          listo=0
+          for intento in {1..30}; do
+            if docker exec "$contenedor" \
+                pg_isready -U postgres -d grocio_ci >/dev/null 2>&1; then
+              listo=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$listo" -ne 1 ]; then
+            echo "ERROR: PostgreSQL temporal no inicio"
+            exit 1
+          fi
 
+          # Crear solo los roles y la tabla Auth simulados para CI.
+          docker exec -i "$contenedor" \
+            psql -X -U postgres -d grocio_ci -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE SCHEMA auth;
+          CREATE TABLE auth.users (id UUID PRIMARY KEY);
+          CREATE ROLE anon NOLOGIN;
+          CREATE ROLE authenticated NOLOGIN;
+          CREATE ROLE soporte_ti_api LOGIN NOSUPERUSER NOBYPASSRLS NOINHERIT;
+          SQL
+
+          # Aplicar los scripts existentes solo en el contenedor.
+          docker exec "$contenedor" \
+            psql -X -U postgres -d grocio_ci -v ON_ERROR_STOP=1 \
+            -f /sql/01_esquema_mvp.sql
+          docker exec "$contenedor" \
+            psql -X -U postgres -d grocio_ci -v ON_ERROR_STOP=1 \
+            -f /sql/02_permisos_backend.sql
+
+          # Verificar que el error sea realmente de permisos (SQLSTATE 42501).
+          debe_denegar() {
+            local rol="$1"
+            local accion="$2"
+            local sentencia="$3"
+            local salida
+
+            if salida="$(docker exec "$contenedor" \
+                psql -X -U postgres -d grocio_ci \
+                -v ON_ERROR_STOP=1 -v VERBOSITY=verbose \
+                -c "SET ROLE ${rol}; ${sentencia}" 2>&1)"; then
+              echo "ERROR: $rol pudo ejecutar $accion"
+              return 1
+            fi
+
+            if ! grep -q '42501' <<< "$salida"; then
+              echo "ERROR: $rol fallo en $accion por motivo distinto a permisos"
+              echo "$salida"
+              return 1
+            fi
+            echo "DENEGADO: $rol - $accion"
+          }
+
+          tablas=(areas usuarios incidencias asignaciones intervenciones verificaciones evidencias historial_incidencias)
+
+          # Ni anon ni authenticated deben leer ninguna tabla directamente.
+          for rol in anon authenticated; do
+            for tabla in "${tablas[@]}"; do
+              debe_denegar "$rol" "SELECT $tabla" \
+                "SELECT 1 FROM public.${tabla} LIMIT 1;"
+            done
+          done
+
+          # Tampoco pueden crear, actualizar o borrar areas.
+          for rol in anon authenticated; do
+            debe_denegar "$rol" "INSERT areas" \
+              "INSERT INTO public.areas(nombre) VALUES ('CI bloqueado');"
+            debe_denegar "$rol" "UPDATE areas" \
+              "UPDATE public.areas SET nombre = 'CI' WHERE false;"
+            debe_denegar "$rol" "DELETE areas" \
+              "DELETE FROM public.areas WHERE false;"
+          done
+
+          # La API no debe gestionar directamente areas ni usuarios.
+          for tabla in areas usuarios; do
+            debe_denegar soporte_ti_api "INSERT $tabla" \
+              "INSERT INTO public.${tabla} DEFAULT VALUES;"
+            debe_denegar soporte_ti_api "UPDATE $tabla" \
+              "UPDATE public.${tabla} SET id = id WHERE false;"
+          done
+
+          # Las tablas de historial/evidencias/atenciones son de solo insercion.
+          for tabla in intervenciones verificaciones evidencias historial_incidencias; do
+            debe_denegar soporte_ti_api "UPDATE $tabla" \
+              "UPDATE public.${tabla} SET id = id WHERE false;"
+          done
+
+          # La API nunca debe poder eliminar registros del modelo.
+          for tabla in "${tablas[@]}"; do
+            debe_denegar soporte_ti_api "DELETE $tabla" \
+              "DELETE FROM public.${tabla} WHERE false;"
+          done
+
+          echo "Paso 95 aprobado: accesos indebidos rechazados"
 
