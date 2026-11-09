@@ -710,11 +710,13 @@ jobs:
                   respuesta = cliente.post(ruta)
                   assert respuesta.status_code == 401
 
-                  # Jefe no utiliza la autotoma.
+                  
+                  # El JEFE no puede tomar un ticket ocupado.
                   probar(
                       cliente, "JEFE",
-                      BaseDatosSimulada(), 403
+                      BaseDatosSimulada(ocupada=True), 409
                   )
+
 
                   # Representante no toma incidencias.
                   probar(
@@ -743,8 +745,9 @@ jobs:
                       409,
                   )
 
-                  # Ambos perfiles pueden tomar tickets.
-                  for rol in ("ASISTENTE", "PRACTICANTE"):
+                  
+                  # Los tres perfiles pueden tomar tickets libres.
+                  for rol in ("JEFE", "ASISTENTE", "PRACTICANTE"):
                       db = BaseDatosSimulada()
 
                       respuesta = probar(
