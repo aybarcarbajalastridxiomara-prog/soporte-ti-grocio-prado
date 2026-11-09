@@ -1431,8 +1431,9 @@ jobs:
                       },
                   )
 
-                  # Registro correcto por ambos perfiles.
-                  for rol in ("ASISTENTE", "PRACTICANTE"):
+                  
+                  # Registro correcto por los tres perfiles.
+                  for rol in ("JEFE", "ASISTENTE", "PRACTICANTE"):
                       db = BaseDatosSimulada()
 
                       respuesta = probar(
