@@ -4487,7 +4487,6 @@ jobs:
 
               END LOOP;
 
-              # Esta sección SQL no admite comentarios con #.
               -- Areas y usuarios: solo lectura para la API.
               FOR t IN SELECT unnest(ARRAY[
                   'areas', 'usuarios'
