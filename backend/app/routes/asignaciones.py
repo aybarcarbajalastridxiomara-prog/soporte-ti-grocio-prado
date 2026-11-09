@@ -65,10 +65,14 @@ def tomar_incidencia(
     """Permite al personal autorizado tomar una incidencia."""
 
     # Solamente asistentes y practicantes.
+    
+    # Jefe, asistente y practicante pueden tomar tickets libres.
     if usuario_actual.rol not in {
+        "JEFE",
         "ASISTENTE",
         "PRACTICANTE",
     }:
+
         raise HTTPException(
             status_code=403,
             detail="No tiene permiso para tomar incidencias.",
