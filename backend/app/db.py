@@ -55,11 +55,33 @@ def get_db() -> Generator[Session, None, None]:
         yield session
 
 
+
 def verificar_conexion_db() -> bool:
-    """Comprueba si PostgreSQL responde."""
+    """Comprueba conexion, usuario y lectura sin modificar datos."""
 
     with get_engine().connect() as conexion:
+
+        # 1. Verificar que PostgreSQL responde.
         resultado = conexion.execute(
             text("SELECT 1")
         )
-        return resultado.scalar_one() == 1
+
+        if resultado.scalar_one() != 1:
+            return False
+
+        # 2. Comprobar que usamos el usuario restringido.
+        usuario = conexion.execute(
+            text("SELECT current_user")
+        ).scalar_one()
+
+        if usuario != "soporte_ti_api":
+            return False
+
+        # 3. Verificar permiso de lectura sobre una tabla real.
+        # LIMIT 0 no devuelve registros.
+        conexion.execute(
+            text("SELECT nombre FROM public.areas LIMIT 0")
+        )
+
+        return True
+
