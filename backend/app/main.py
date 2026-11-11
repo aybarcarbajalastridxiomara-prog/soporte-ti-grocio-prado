@@ -2,6 +2,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
+from app.db import verificar_conexion_db
+
 
 
 from app.routes.usuarios import router as usuarios_router
@@ -66,10 +68,22 @@ def inicio():
     }
 
 
+
 @app.get("/api/health")
 def verificar_estado():
+    estado_db = "no_configurada"
+
+    if get_settings().database_url:
+        try:
+            if verificar_conexion_db():
+                estado_db = "conectada"
+            else:
+                estado_db = "no_disponible"
+        except Exception:
+            estado_db = "no_disponible"
+
     return {
         "estado": "ok",
         "servicio": "backend",
-        "base_datos": "pendiente_de_conexion",
+        "base_datos": estado_db,
     }
