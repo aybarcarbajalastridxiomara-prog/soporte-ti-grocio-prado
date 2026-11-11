@@ -1,8 +1,10 @@
 
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.db import verificar_conexion_db
+
 
 
 
@@ -79,8 +81,19 @@ def verificar_estado():
                 estado_db = "conectada"
             else:
                 estado_db = "no_disponible"
-        except Exception:
+        
+        except Exception as error:
+            origen = getattr(error, "orig", None)
+
+            logging.getLogger("soporte_ti.db").warning(
+                "Fallo de conexion PostgreSQL: tipo=%s, origen=%s, codigo=%s",
+                type(error).__name__,
+                type(origen).__name__ if origen else "N/A",
+                getattr(origen, "sqlstate", None),
+            )
+
             estado_db = "no_disponible"
+
 
     return {
         "estado": "ok",
