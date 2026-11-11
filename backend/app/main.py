@@ -82,17 +82,75 @@ def verificar_estado():
             else:
                 estado_db = "no_disponible"
         
+        
         except Exception as error:
             origen = getattr(error, "orig", None)
+            detalle = str(
+                origen if origen is not None else error
+            ).lower()
+
+            if any(x in detalle for x in (
+                "password authentication failed",
+                "authentication failed",
+                "invalid password",
+                "invalid credentials",
+            )):
+                causa = "AUTENTICACION"
+
+            elif any(x in detalle for x in (
+                "tenant or user not found",
+                "user not found",
+                "unknown user",
+            )):
+                causa = "USUARIO_POOLER"
+
+            elif any(x in detalle for x in (
+                "could not translate host name",
+                "name or service not known",
+                "getaddrinfo failed",
+                "name resolution",
+            )):
+                causa = "DNS"
+
+            elif any(x in detalle for x in (
+                "timeout",
+                "timed out",
+            )):
+                causa = "TIMEOUT"
+
+            elif any(x in detalle for x in (
+                "network is unreachable",
+                "no route to host",
+                "connection refused",
+            )):
+                causa = "RED"
+
+            elif any(x in detalle for x in (
+                "ssl",
+                "tls",
+                "certificate",
+            )):
+                causa = "SEGURIDAD_TLS"
+
+            elif any(x in detalle for x in (
+                "invalid connection string",
+                "invalid dsn",
+                "invalid port",
+            )):
+                causa = "FORMATO_URL"
+
+            else:
+                causa = "SIN_CLASIFICAR"
 
             logging.getLogger("soporte_ti.db").warning(
-                "Fallo de conexion PostgreSQL: tipo=%s, origen=%s, codigo=%s",
+                "Diagnostico PostgreSQL: categoria=%s, tipo=%s, codigo=%s",
+                causa,
                 type(error).__name__,
-                type(origen).__name__ if origen else "N/A",
                 getattr(origen, "sqlstate", None),
             )
 
             estado_db = "no_disponible"
+
 
 
     return {
