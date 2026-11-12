@@ -4734,19 +4734,30 @@ jobs:
 
           trap 'docker rm -f "$contenedor" >/dev/null 2>&1 || true' EXIT
 
+         
           listo=0
           for intento in {1..30}; do
-            if docker exec "$contenedor" \
-                pg_isready -U postgres -d grocio_ci >/dev/null 2>&1; then
+            if docker exec \
+                -e PGPASSWORD=clave_solo_ci \
+                "$contenedor" \
+                psql -X \
+                -h 127.0.0.1 \
+                -U postgres \
+                -d grocio_ci \
+                -Atq \
+                -c "SELECT 1" \
+                >/dev/null 2>&1; then
               listo=1
               break
             fi
             sleep 1
           done
+          
           if [ "$listo" -ne 1 ]; then
-            echo "ERROR: PostgreSQL temporal no inicio"
+            echo "ERROR: PostgreSQL temporal o base grocio_ci no disponible"
             exit 1
           fi
+
 
           # Preparar base independiente con identidades de prueba.
           docker exec -i "$contenedor" \
