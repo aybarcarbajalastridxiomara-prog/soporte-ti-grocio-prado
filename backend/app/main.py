@@ -18,6 +18,7 @@ from app.routes.seguimiento import router as seguimiento_router
 from app.routes.v4_verificaciones import router as v4_verificaciones_router
 from app.routes.v4_asignaciones import router as v4_asignaciones_router
 from app.routes.v4_intervenciones import router as v4_intervenciones_router
+from app.routes.v4_cierres import router as v4_cierres_router
 
 
 app = FastAPI(
@@ -65,6 +66,7 @@ app.include_router(seguimiento_router)
 app.include_router(v4_verificaciones_router)
 app.include_router(v4_asignaciones_router)
 app.include_router(v4_intervenciones_router)
+app.include_router(v4_cierres_router)
 
 
 @app.get("/")
