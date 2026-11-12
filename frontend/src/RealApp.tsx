@@ -9,6 +9,7 @@ import {
   type IncidenciaReal,
   type SesionReal,
 } from "./api"
+import RealRegister from "./RealRegister"
 
 export default function RealApp() {
   const [correo, setCorreo] = useState("")
@@ -21,6 +22,7 @@ export default function RealApp() {
 
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState("")
+  const [vista, setVista] = useState<"lista" | "registro">("lista")
 
   async function ingresar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault()
@@ -97,6 +99,7 @@ export default function RealApp() {
     setContrasena("")
     setCorreo("")
     setMensaje("")
+    setVista("lista")
   }
 
   if (!sesion || !perfil) {
@@ -216,12 +219,73 @@ export default function RealApp() {
             <p className="breadcrumb">
               Sistema de Gestión de Incidencias
             </p>
-            <h1>Incidencias registradas</h1>
+            <h1>
+  {vista === "registro"
+    ? "Registrar incidencia"
+    : "Incidencias registradas"}
+</h1>
           </div>
         </header>
 
-        <div className="page">
-          <div className="page-title-row">
+        
+<div className="page">
+  {perfil.rol === "REPRESENTANTE" && (
+    <div
+      style={{
+        display: "flex",
+        gap: 10,
+        marginBottom: 20,
+        flexWrap: "wrap",
+      }}
+    >
+      <button
+        type="button"
+        className="outline"
+        onClick={() => setVista("lista")}
+      >
+        Mis incidencias
+      </button>
+
+      <button
+        type="button"
+        className="primary"
+        onClick={() => {
+          setVista("registro")
+          setMensaje("")
+        }}
+      >
+        Registrar incidencia
+      </button>
+    </div>
+  )}
+
+  {vista === "registro" && perfil.rol === "REPRESENTANTE" ? (
+    <RealRegister
+      token={sesion.access_token}
+      onCancelar={() => setVista("lista")}
+      onCreada={async (codigo) => {
+        setVista("lista")
+        setMensaje(
+          `Incidencia ${codigo} registrada correctamente.`,
+        )
+
+        try {
+          const registros = await listarIncidenciasReales(
+            sesion.access_token,
+          )
+          setIncidencias(registros)
+        } catch {
+          setMensaje(
+            `Incidencia ${codigo} registrada, ` +
+            "pero no se pudo actualizar el listado.",
+          )
+        }
+      }}
+    />
+  ) : (
+    <>
+      <div className="page-title-row">
+
             <div>
               <h2>Seguimiento de incidencias</h2>
               <p>
@@ -295,8 +359,11 @@ export default function RealApp() {
               <p>
                 No hay incidencias disponibles para este usuario.
               </p>
+           
             )}
           </div>
+        </>
+      )}
         </div>
       </section>
     </main>
