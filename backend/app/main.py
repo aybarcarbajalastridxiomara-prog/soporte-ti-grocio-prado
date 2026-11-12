@@ -1,9 +1,10 @@
 
 import logging
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.db import verificar_conexion_db
+from app.v4_guardia import proteger_operacion_v3
 
 
 
@@ -56,12 +57,31 @@ app.add_middleware(
 
 
 # Registrar los módulos de nuestra API
+
 app.include_router(usuarios_router)
-app.include_router(incidencias_router)
-app.include_router(asignaciones_router)
-app.include_router(intervenciones_router)
+
+app.include_router(
+    incidencias_router,
+    dependencies=[Depends(proteger_operacion_v3)],
+)
+
+app.include_router(
+    asignaciones_router,
+    dependencies=[Depends(proteger_operacion_v3)],
+)
+
+app.include_router(
+    intervenciones_router,
+    dependencies=[Depends(proteger_operacion_v3)],
+)
+
 app.include_router(informes_router)
-app.include_router(verificaciones_router)
+
+app.include_router(
+    verificaciones_router,
+    dependencies=[Depends(proteger_operacion_v3)],
+)
+
 app.include_router(seguimiento_router)
 app.include_router(v4_verificaciones_router)
 app.include_router(v4_asignaciones_router)
