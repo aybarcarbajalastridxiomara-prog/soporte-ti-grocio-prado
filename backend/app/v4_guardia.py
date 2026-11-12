@@ -18,8 +18,8 @@ from app.v4_esquema import esquema_v4_disponible
 
 def proteger_operacion_v3(
     request: Request,
-    db: Session = Depends(get_db),
     usuario_actual: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> None:
     """Impide escrituras V3 sobre ciclos posteriores al primero.
 
