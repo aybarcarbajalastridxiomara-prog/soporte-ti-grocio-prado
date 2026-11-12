@@ -1,0 +1,221 @@
+
+name: Validar integracion V4
+
+on:
+  push:
+    branches:
+      - ajustes-docente-v4
+    paths:
+      - "backend/app/v4_esquema.py"
+      - "database/03_reapertura_v4.sql"
+      - "frontend/**"
+      - ".github/workflows/validar-integracion-v4.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verificar-frontend:
+    name: Compilar frontend React
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Instalar dependencias
+        working-directory: frontend
+        run: npm install --no-audit --no-fund
+
+      - name: Compilar frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Comprobar resultado
+        run: |
+          test -f frontend/dist/index.html
+          test -d frontend/dist/assets
+          echo "Frontend React compilado correctamente"
+
+  verificar-esquema:
+    name: Detectar PostgreSQL V3 y V4
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias de prueba
+        run: |
+          python -m pip install \
+            "SQLAlchemy>=2.0,<3" \
+            "psycopg[binary]>=3.2,<4"
+
+      - name: Paso 109D4 - Probar detector
+        shell: bash
+        env:
+          PYTHONPATH: backend
+        run: |
+          set -euo pipefail
+
+          CONTENEDOR="grocio-v4-detector-ci"
+
+          docker run --detach --rm \
+            --name "$CONTENEDOR" \
+            -p 127.0.0.1:55432:5432 \
+            -e POSTGRES_PASSWORD=ci_postgres_temporal \
+            -e POSTGRES_DB=grocio_ci \
+            -v "$GITHUB_WORKSPACE/database:/sql:ro" \
+            postgres:16 >/dev/null
+
+          trap 'docker rm -f "$CONTENEDOR" >/dev/null 2>&1 || true' EXIT
+
+          listo=0
+          for intento in {1..30}; do
+            if docker exec "$CONTENEDOR" \
+              pg_isready -U postgres -d grocio_ci \
+              >/dev/null 2>&1; then
+              listo=1
+              break
+            fi
+            sleep 2
+          done
+
+          test "$listo" -eq 1
+
+          # Infraestructura simulada, sin cuentas reales.
+          docker exec -i "$CONTENEDOR" \
+            psql -U postgres -d grocio_ci \
+            -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE SCHEMA auth;
+          CREATE TABLE auth.users (id UUID PRIMARY KEY);
+          CREATE ROLE anon NOLOGIN;
+          CREATE ROLE authenticated NOLOGIN;
+          CREATE ROLE soporte_ti_api
+            LOGIN NOSUPERUSER NOBYPASSRLS NOINHERIT
+            PASSWORD 'ci_restringido_temporal';
+          SQL
+
+          docker exec "$CONTENEDOR" \
+            psql -U postgres -d grocio_ci \
+            -v ON_ERROR_STOP=1 \
+            -f /sql/01_esquema_mvp.sql
+
+          docker exec "$CONTENEDOR" \
+            psql -U postgres -d grocio_ci \
+            -v ON_ERROR_STOP=1 \
+            -f /sql/02_permisos_backend.sql
+
+          python - <<'PY'
+          import subprocess
+
+          from sqlalchemy import create_engine, text
+          from sqlalchemy.orm import Session
+
+          from app.v4_esquema import esquema_v4_disponible
+
+          CONTENEDOR = "grocio-v4-detector-ci"
+
+          engine = create_engine(
+              "postgresql+psycopg://"
+              "soporte_ti_api:ci_restringido_temporal"
+              "@127.0.0.1:55432/grocio_ci"
+          )
+
+          def ejecutar_sql(consulta):
+              subprocess.run(
+                  [
+                      "docker", "exec", CONTENEDOR,
+                      "psql", "-U", "postgres",
+                      "-d", "grocio_ci",
+                      "-v", "ON_ERROR_STOP=1",
+                      "-c", consulta,
+                  ],
+                  check=True,
+              )
+
+          def comprobar(esperado, descripcion):
+              with Session(engine) as db:
+                  db.execute(text("SET TRANSACTION READ ONLY"))
+                  resultado = esquema_v4_disponible(db)
+
+              assert resultado is esperado, (
+                  f"{descripcion}: esperado {esperado}, "
+                  f"obtenido {resultado}"
+              )
+              print(f"OK: {descripcion}")
+
+          # Base original: detector debe rechazar V3.
+          comprobar(False, "Esquema V3 detectado")
+
+          # Simular instalacion incompleta.
+          ejecutar_sql(
+              "ALTER TABLE public.incidencias "
+              "ADD COLUMN ciclo_actual INTEGER "
+              "NOT NULL DEFAULT 1 "
+              "CHECK (ciclo_actual >= 1)"
+          )
+          comprobar(False, "Migracion parcial rechazada")
+
+          # Volver al estado original.
+          ejecutar_sql(
+              "ALTER TABLE public.incidencias "
+              "DROP COLUMN ciclo_actual"
+          )
+
+          # Aplicar V4 en la base temporal.
+          subprocess.run(
+              [
+                  "docker", "exec", CONTENEDOR,
+                  "psql", "-U", "postgres",
+                  "-d", "grocio_ci",
+                  "-v", "ON_ERROR_STOP=1",
+                  "-f", "/sql/03_reapertura_v4.sql",
+              ],
+              check=True,
+          )
+
+          comprobar(True, "Esquema V4 completo detectado")
+
+          # El detector debe rechazar un indice ausente.
+          ejecutar_sql(
+              "DROP INDEX public."
+              "ux_verificaciones_incidencia_ciclo"
+          )
+          comprobar(False, "Indice V4 ausente rechazado")
+
+          ejecutar_sql(
+              "CREATE UNIQUE INDEX "
+              "ux_verificaciones_incidencia_ciclo "
+              "ON public.verificaciones "
+              "(incidencia_id, ciclo_atencion)"
+          )
+          comprobar(True, "Indice V4 restaurado")
+
+          # Detectar una restriccion antigua incompatible.
+          ejecutar_sql(
+              "CREATE UNIQUE INDEX "
+              "ux_verificaciones_incidencia "
+              "ON public.verificaciones (incidencia_id)"
+          )
+          comprobar(False, "Indice V3 incompatible rechazado")
+
+          ejecutar_sql(
+              "DROP INDEX public.ux_verificaciones_incidencia"
+          )
+          comprobar(True, "Esquema V4 valido nuevamente")
+
+          engine.dispose()
+          print("Paso 109D4 aprobado")
+          PY
