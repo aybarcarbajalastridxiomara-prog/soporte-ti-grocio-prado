@@ -1,6 +1,7 @@
 
 import logging
 from fastapi import Depends, FastAPI
+from fastapi.routing import APIRoute
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.db import verificar_conexion_db
@@ -56,33 +57,39 @@ app.add_middleware(
 
 
 
-# Registrar los módulos de nuestra API
 
+# Proteger exclusivamente escrituras V3 con incidencia_id.
+def incluir_router_v3_protegido(router):
+    for ruta in router.routes:
+        if (
+            isinstance(ruta, APIRoute)
+            and "{incidencia_id}" in ruta.path
+            and bool(
+                (ruta.methods or set())
+                & {"POST", "PUT", "PATCH", "DELETE"}
+            )
+        ):
+            ruta.dependencies.append(
+                Depends(proteger_operacion_v3)
+            )
+
+    app.include_router(router)
+
+
+# Registrar modulos.
 app.include_router(usuarios_router)
 
-app.include_router(
-    incidencias_router,
-    dependencies=[Depends(proteger_operacion_v3)],
-)
-
-app.include_router(
-    asignaciones_router,
-    dependencies=[Depends(proteger_operacion_v3)],
-)
-
-app.include_router(
-    intervenciones_router,
-    dependencies=[Depends(proteger_operacion_v3)],
-)
+incluir_router_v3_protegido(incidencias_router)
+incluir_router_v3_protegido(asignaciones_router)
+incluir_router_v3_protegido(intervenciones_router)
 
 app.include_router(informes_router)
 
-app.include_router(
-    verificaciones_router,
-    dependencies=[Depends(proteger_operacion_v3)],
-)
+incluir_router_v3_protegido(verificaciones_router)
 
 app.include_router(seguimiento_router)
+
+# Rutas V4 independientes.
 app.include_router(v4_verificaciones_router)
 app.include_router(v4_asignaciones_router)
 app.include_router(v4_intervenciones_router)
