@@ -1,6 +1,8 @@
 """110G: comprobación EXTERNA, de SOLO LECTURA, de Vercel/API.
-No usa tokens, no crea usuarios, no modifica Supabase y no realiza migraciones.
-Ejecutar en GitHub Actions. Las URL se definen como variables no secretas.
+No usa tokens de usuario, no crea usuarios, no modifica Supabase y no realiza migraciones.
+El bypass de Vercel (si se usa) se proporciona mediante un Secret de GitHub y solo
+permite superar la proteccion del despliegue; NO reemplaza la autenticacion de la API.
+Las URL se definen como variables no secretas.
 """
 from __future__ import annotations
 
@@ -15,6 +17,7 @@ from urllib.request import Request, urlopen
 
 API = os.getenv('API_PUBLICA', 'https://soporte-ti-grocio-prado-api.vercel.app').strip().rstrip('/')
 FRONT = os.getenv('FRONTEND_PUBLICO', 'https://soporte-ti-grocio-prado.vercel.app').strip().rstrip('/')
+BYPASS = os.getenv('VERCEL_AUTOMATION_BYPASS_SECRET', '').strip()
 OUT = Path('artifacts/110g_status.json')
 resultados: list[dict[str, object]] = []
 
@@ -26,7 +29,11 @@ def verificar(condicion: bool, titulo: str, detalle: str = '') -> None:
 
 
 def pedir(url: str, metodo: str = 'GET', headers: dict[str, str] | None = None):
-    req = Request(url, method=metodo, headers={'Accept': 'application/json, text/html', **(headers or {})})
+    cabeceras = {'Accept': 'application/json, text/html', **(headers or {})}
+    # El secreto se envia SOLO al dominio de la API protegida; nunca al frontend.
+    if BYPASS and urlparse(url).netloc == urlparse(API).netloc:
+        cabeceras['x-vercel-protection-bypass'] = BYPASS
+    req = Request(url, method=metodo, headers=cabeceras)
     try:
         with urlopen(req, timeout=12) as r:
             return r.status, dict(r.headers.items()), r.read(50000).decode('utf-8', errors='replace')
@@ -61,6 +68,8 @@ def frontend():
 
 def api_salud():
     codigo, _, cuerpo = pedir(API + '/api/health')
+    if codigo == 401 and not BYPASS:
+        print('AVISO: API protegida por Vercel; configurar VERCEL_AUTOMATION_BYPASS_SECRET como GitHub Secret.', flush=True)
     verificar(codigo == 200, 'API: /api/health responde HTTP 200', f'HTTP {codigo}')
     try:
         datos = json.loads(cuerpo)
