@@ -4431,8 +4431,14 @@ jobs:
 
           listo=0
           for intento in {1..30}; do
-            if docker exec grocio-pg-paso93 \
-                pg_isready -U postgres -d grocio_ci >/dev/null 2>&1; then
+            
+          if docker exec \
+              -e PGPASSWORD=clave_ci_temporal \
+              grocio-pg-paso93 \
+              psql -X -h 127.0.0.1 \
+              -U postgres -d grocio_ci \
+              -Atq -c 'SELECT 1' >/dev/null 2>&1; then
+
               listo=1
               break
             fi
@@ -4621,8 +4627,14 @@ jobs:
 
           listo=0
           for intento in {1..30}; do
-            if docker exec "$contenedor" \
-                pg_isready -U postgres -d grocio_ci >/dev/null 2>&1; then
+            
+          if docker exec \
+              -e PGPASSWORD=clave_solo_ci \
+              "$contenedor" \
+              psql -X -h 127.0.0.1 \
+              -U postgres -d grocio_ci \
+              -Atq -c 'SELECT 1' >/dev/null 2>&1; then
+
               listo=1
               break
             fi
