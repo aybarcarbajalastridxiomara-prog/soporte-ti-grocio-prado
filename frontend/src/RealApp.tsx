@@ -393,10 +393,15 @@ export default function RealApp() {
           ) : ticketSeleccionado ? (
             /* PASO 110D1 - DETALLE REAL */
 
+                        
             <RealTicketDetail
               token={sesion.access_token}
               ticket={ticketSeleccionado}
-              onVolver={mostrarListado}
+              rol={perfil.rol}
+              onVolver={() => {
+                mostrarListado()
+                void actualizarIncidencias()
+              }}
             />
           ) : (
             /* LISTADO DE INCIDENCIAS */
