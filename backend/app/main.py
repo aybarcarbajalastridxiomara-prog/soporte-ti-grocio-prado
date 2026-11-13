@@ -23,6 +23,7 @@ from app.routes.v4_intervenciones import router as v4_intervenciones_router
 from app.routes.v4_cierres import router as v4_cierres_router
 from app.routes.contexto_asignacion import router as contexto_asignacion_router
 from app.routes.contexto_atencion import router as contexto_atencion_router
+from app.routes.contexto_verificacion import router as contexto_verificacion_router
 
 
 app = FastAPI(
@@ -82,6 +83,7 @@ def incluir_router_v3_protegido(router):
 app.include_router(usuarios_router)
 app.include_router(contexto_asignacion_router)
 app.include_router(contexto_atencion_router)
+app.include_router(contexto_verificacion_router)
 
 incluir_router_v3_protegido(incidencias_router)
 incluir_router_v3_protegido(asignaciones_router)
