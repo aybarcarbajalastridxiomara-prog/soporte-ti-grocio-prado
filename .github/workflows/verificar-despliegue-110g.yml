@@ -20,6 +20,7 @@ jobs:
     env:
       API_PUBLICA: ${{ vars.API_PUBLICA || 'https://soporte-ti-grocio-prado-api.vercel.app' }}
       FRONTEND_PUBLICO: ${{ vars.FRONTEND_PUBLICO || 'https://soporte-ti-grocio-prado.vercel.app' }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
     steps:
       - name: Obtener rama
         uses: actions/checkout@v4
