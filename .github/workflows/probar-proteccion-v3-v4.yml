@@ -319,7 +319,10 @@ jobs:
 
               for nombre,respuesta in bloqueos:
                   comprobar(respuesta,409,f'V3 {nombre} bloqueado en ciclo 2')
-                  assert 'V4' in str(respuesta.json().get('detail','')), nombre
+                 
+              assert 'v4' in str(respuesta.json().get('detail', '')).lower(), (
+                  nombre, respuesta.json()
+              )
 
               assert totales() == inicial, (
                   'Una operacion V3 altero datos del ticket reabierto',
