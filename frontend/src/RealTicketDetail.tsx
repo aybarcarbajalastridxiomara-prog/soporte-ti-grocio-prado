@@ -1,15 +1,17 @@
 /**
  * Paso 110D1: detalle de incidencias de la API real.
- * Pantalla de SOLO LECTURA. No escribe datos ni modifica el modo demo.
+ * Consultas de lectura y formulario opcional de asignacion para JEFE.
  * V3 funciona por defecto. El historial por ciclos V4 solo se consulta si
  * VITE_CONSULTA_CICLOS_V4=true y la migracion V4 fue validada previamente.
  */
 import { useEffect, useState, type CSSProperties } from "react"
-import { solicitarAPI, type IncidenciaReal } from "./api"
+import { solicitarAPI, type IncidenciaReal, type Rol } from "./api"
+import RealAssignment from "./RealAssignment"
 
 type Props = {
   token: string
   ticket: IncidenciaReal
+  rol?: Rol
   onVolver: () => void
 }
 
@@ -79,7 +81,7 @@ function Campo({ nombre, valor }: { nombre: string; valor: string | null | undef
   )
 }
 
-export default function RealTicketDetail({ token, ticket, onVolver }: Props) {
+export default function RealTicketDetail({ token, ticket, rol, onVolver }: Props) {
   const [detalle, setDetalle] = useState<DetalleIncidencia | null>(null)
   const [eventos, setEventos] = useState<Evento[]>([])
   const [intervenciones, setIntervenciones] = useState<Intervencion[]>([])
@@ -87,6 +89,9 @@ export default function RealTicketDetail({ token, ticket, onVolver }: Props) {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState("")
   const [recarga, setRecarga] = useState(0)
+  const [mensajeAsignacion, setMensajeAsignacion] = useState("")
+
+  useEffect(() => { setMensajeAsignacion("") }, [ticket.id])
 
   useEffect(() => {
     let vigente = true
@@ -161,9 +166,26 @@ export default function RealTicketDetail({ token, ticket, onVolver }: Props) {
           </span>
         </div>
         <p style={{ color: "#65758b", fontSize: 13, margin: 0 }}>
-          Consulta del registro original y sus actuaciones. Esta pantalla no modifica la incidencia.
+          Consulta de la incidencia y sus actuaciones. Solo el jefe puede registrar una asignación si el entorno lo autoriza.
         </p>
       </header>
+
+      {mensajeAsignacion && (
+        <p role="status" style={{ ...panel, color: "#176a46", fontWeight: 700 }}>
+          {mensajeAsignacion}
+        </p>
+      )}
+
+      {rol === "JEFE" && !cargando && detalle && (
+        <RealAssignment
+          token={token}
+          ticketId={ticket.id}
+          onAsignada={() => {
+            setMensajeAsignacion("Asignación registrada. Datos de la incidencia actualizados.")
+            setRecarga((actual) => actual + 1)
+          }}
+        />
+      )}
 
       <nav aria-label="Secciones del detalle" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {tabs.map((tab) => (
