@@ -1,0 +1,77 @@
+name: 110F - Auditoria segura de preentrega
+
+on:
+  push:
+    branches:
+      - ajustes-docente-v4
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/scripts/preentrega_110f.py"
+      - ".github/workflows/preentrega-110f.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contrato-backend:
+    name: Contratos API, roles y seguridad basica
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: backend
+      DATABASE_URL: ""
+      SUPABASE_URL: ""
+      FRONTEND_URL: http://localhost:5173
+      APP_ENV: ci
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar dependencias
+        run: |
+          python -m pip install -r backend/requirements.txt
+          python -m pip install "httpx>=0.28,<1"
+      - name: Auditar rutas, origenes y bloqueos de escritura
+        run: python .github/scripts/preentrega_110f.py
+
+  compilar-modos:
+    name: Compilar prototipo y modo real
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Instalar dependencias
+        working-directory: frontend
+        run: npm install --no-audit --no-fund
+      - name: Compilar prototipo por defecto
+        working-directory: frontend
+        env:
+          VITE_MODO_REAL: "false"
+        run: npm run build
+      - name: Compilar modo real con URLs ficticias
+        working-directory: frontend
+        env:
+          VITE_MODO_REAL: "true"
+          VITE_API_BASE_URL: https://backend.ejemplo.invalid
+          VITE_SUPABASE_URL: https://supabase.ejemplo.invalid
+          VITE_SUPABASE_ANON_KEY: clave-publica-ficticia-sin-acceso
+          VITE_PERMITIR_ASIGNACION_REAL: "false"
+          VITE_PERMITIR_ATENCION_REAL: "false"
+          VITE_PERMITIR_VERIFICACION_REAL: "false"
+          VITE_CONSULTA_CICLOS_V4: "false"
+        run: npm run build
+      - name: Comprobar archivo de salida
+        run: |
+          test -f frontend/dist/index.html
+          test -d frontend/dist/assets
+          echo "OK: prototipo y modo real compilan sin credenciales reales"
