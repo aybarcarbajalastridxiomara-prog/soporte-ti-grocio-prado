@@ -1,0 +1,39 @@
+name: 110G1 - Validar despliegue Vercel y API
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ajustes-docente-v4
+    paths:
+      - ".github/scripts/verificar_despliegue_110g.py"
+      - ".github/workflows/verificar-despliegue-110g.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validacion-externa:
+    name: Diagnostico de despliegue sin escrituras
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      API_PUBLICA: ${{ vars.API_PUBLICA || 'https://soporte-ti-grocio-prado-api.vercel.app' }}
+      FRONTEND_PUBLICO: ${{ vars.FRONTEND_PUBLICO || 'https://soporte-ti-grocio-prado.vercel.app' }}
+    steps:
+      - name: Obtener rama
+        uses: actions/checkout@v4
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Comprobar web, API, PostgreSQL, acceso y CORS
+        run: python .github/scripts/verificar_despliegue_110g.py
+      - name: Guardar informe de evidencia
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidencia-110g1-despliegue
+          path: artifacts/110g_status.json
+          if-no-files-found: warn
+          retention-days: 14
