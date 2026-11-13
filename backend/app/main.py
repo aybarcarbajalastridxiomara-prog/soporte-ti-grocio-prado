@@ -21,6 +21,7 @@ from app.routes.v4_verificaciones import router as v4_verificaciones_router
 from app.routes.v4_asignaciones import router as v4_asignaciones_router
 from app.routes.v4_intervenciones import router as v4_intervenciones_router
 from app.routes.v4_cierres import router as v4_cierres_router
+from app.routes.contexto_asignacion import router as contexto_asignacion_router
 
 
 app = FastAPI(
@@ -78,6 +79,7 @@ def incluir_router_v3_protegido(router):
 
 # Registrar modulos.
 app.include_router(usuarios_router)
+app.include_router(contexto_asignacion_router)
 
 incluir_router_v3_protegido(incidencias_router)
 incluir_router_v3_protegido(asignaciones_router)
