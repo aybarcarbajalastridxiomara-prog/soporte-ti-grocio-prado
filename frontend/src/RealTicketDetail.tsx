@@ -7,6 +7,7 @@
 import { useEffect, useState, type CSSProperties } from "react"
 import { solicitarAPI, type IncidenciaReal, type Rol } from "./api"
 import RealAssignment from "./RealAssignment"
+import RealTechnicalActions from "./RealTechnicalActions"
 
 type Props = {
   token: string
@@ -186,6 +187,21 @@ export default function RealTicketDetail({ token, ticket, rol, onVolver }: Props
           }}
         />
       )}
+
+      
+      {rol &&
+        ["JEFE", "ASISTENTE", "PRACTICANTE"].includes(rol) &&
+        !cargando &&
+        detalle && (
+          <RealTechnicalActions
+            token={token}
+            ticketId={ticket.id}
+            onActualizada={() =>
+              setRecarga((n) => n + 1)
+            }
+          />
+      )}
+
 
       <nav aria-label="Secciones del detalle" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {tabs.map((tab) => (
