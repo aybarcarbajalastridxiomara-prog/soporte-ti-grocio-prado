@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Column,
     FetchedValue,
     Date,
     Time,
@@ -13,6 +14,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    Table,
     text,
 
 )
@@ -22,6 +24,16 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 class Base(DeclarativeBase):
     pass
+
+
+# Referencia de metadatos a la tabla que YA administra Supabase Auth.
+# No crea tablas ni concede acceso al esquema auth. Permite que SQLAlchemy
+# resuelva la FK de Usuario al ordenar INSERT/UPDATE del mapper.
+auth_users = Table(
+    "users", Base.metadata,
+    Column("id", PGUUID(as_uuid=True), primary_key=True),
+    schema="auth",
+)
 
 
 # TABLA 1: AREAS

@@ -5,6 +5,9 @@
  * Nunca guardar contraseñas ni claves privadas aquí.
  */
 
+import { GestorSesion, SesionExpirada, type SesionReal } from "./session"
+export type { SesionReal } from "./session"
+
 const API_URL = (
   import.meta.env.VITE_API_BASE_URL || ""
 ).trim().replace(/\/+$/, "")
@@ -27,6 +30,7 @@ export type PerfilReal = {
   area_id: string
   rol: Rol
   habilitado: boolean
+  area_nombre?: string | null
 }
 
 export type IncidenciaReal = {
@@ -48,10 +52,54 @@ export type NuevaIncidencia = {
   impacto?: "Si" | "Parcialmente" | "No" | null
 }
 
-export type SesionReal = {
-  access_token: string
-  refresh_token: string
-  expires_in: number
+function validarSesion(valor: unknown): SesionReal {
+  const sesion = valor as SesionReal | null
+  if (!sesion || typeof sesion.access_token !== "string" || !sesion.access_token ||
+    typeof sesion.refresh_token !== "string" || !sesion.refresh_token ||
+    typeof sesion.expires_in !== "number" || !Number.isFinite(sesion.expires_in) || sesion.expires_in <= 0) {
+    throw new SesionExpirada()
+  }
+  return sesion
+}
+
+export const sesionReal = new GestorSesion(async (refresh_token) => {
+  const respuesta = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: PUBLIC_KEY },
+    body: JSON.stringify({ refresh_token }),
+    signal: AbortSignal.timeout(15000),
+    cache: "no-store",
+  })
+  if ([400, 401, 403].includes(respuesta.status)) throw new SesionExpirada()
+  if (!respuesta.ok) throw new Error("No se pudo renovar la sesión. Comprueba la conexión e intenta nuevamente.")
+  return validarSesion(await respuesta.json())
+})
+
+/** El enlace de invitación de Auth vuelve al Site URL autorizado por Supabase. */
+export function recibirInvitacionReal(): SesionReal | null {
+  const parametros = new URLSearchParams(window.location.hash.slice(1))
+  if (!parametros.has("access_token") && !parametros.has("error")) return null
+  // Retirar credenciales de la barra y del historial antes de consultar el perfil.
+  window.history.replaceState(null, "", window.location.pathname + window.location.search)
+  if (parametros.has("error")) throw new Error("El enlace de invitación expiró o no es válido. Contacta a la jefatura.")
+  if (parametros.get("type") !== "invite") throw new Error("Enlace de acceso no compatible. Inicia sesión con tu cuenta institucional.")
+  const sesion = validarSesion({
+    access_token: parametros.get("access_token"), refresh_token: parametros.get("refresh_token"),
+    expires_in: Number(parametros.get("expires_in")),
+  })
+  sesionReal.establecer(sesion)
+  return sesion
+}
+
+export async function establecerClaveInvitada(token: string, password: string) {
+  const access = await sesionReal.obtenerToken(token)
+  const respuesta = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    method: "PUT", headers: { apikey: PUBLIC_KEY, Authorization: `Bearer ${access}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ password }), cache: "no-store",
+    signal: AbortSignal.timeout(15000),
+  })
+  if ([401, 403].includes(respuesta.status)) sesionReal.expirar()
+  if (!respuesta.ok) throw new Error("No se pudo establecer la contraseña. Revisa los requisitos de tu cuenta e intenta nuevamente.")
 }
 
 export async function iniciarSesionReal(
@@ -76,6 +124,7 @@ export async function iniciarSesionReal(
         email: correo.trim(),
         password: contrasena,
       }),
+      signal: AbortSignal.timeout(15000),
     }
   )
 
@@ -85,12 +134,8 @@ export async function iniciarSesionReal(
     )
   }
 
-  const sesion = await respuesta.json() as SesionReal
-
-  if (!sesion.access_token) {
-    throw new Error("Supabase no devolvió una sesión válida.")
-  }
-
+  const sesion = validarSesion(await respuesta.json())
+  sesionReal.establecer(sesion)
   return sesion
 }
 
@@ -112,20 +157,28 @@ export async function solicitarAPI<T>(
   }
 
   const headers = new Headers(opciones.headers)
-  headers.set("Authorization", `Bearer ${token}`)
+  let tokenActual = await sesionReal.obtenerToken(token)
+  headers.set("Authorization", `Bearer ${tokenActual}`)
 
   if (opciones.body) {
     headers.set("Content-Type", "application/json")
   }
 
-  const respuesta = await fetch(`${API_URL}${ruta}`, {
+  const enviar = () => fetch(`${API_URL}${ruta}`, {
     ...opciones,
     headers,
     cache: "no-store",
+    signal: opciones.signal ?? AbortSignal.timeout(30000),
   })
 
+  let respuesta = await enviar()
   if (respuesta.status === 401) {
-    throw new Error("Sesión inválida o expirada.")
+    tokenActual = await sesionReal.renovar(tokenActual)
+    headers.set("Authorization", `Bearer ${tokenActual}`)
+    respuesta = await enviar()
+  }
+  if (respuesta.status === 401) {
+    sesionReal.expirar()
   }
 
   if (respuesta.status === 403) {
@@ -133,8 +186,9 @@ export async function solicitarAPI<T>(
   }
 
   if (!respuesta.ok) {
+    const datos = await respuesta.json().catch(() => null) as { detail?: unknown } | null
     throw new Error(
-      `No se pudo completar la operación (${respuesta.status}).`
+      typeof datos?.detail === "string" ? datos.detail : `No se pudo completar la operación (${respuesta.status}).`
     )
   }
 
@@ -150,6 +204,11 @@ export function listarIncidenciasReales(token: string) {
     "/api/incidencias",
     token,
   )
+}
+
+export type ResumenReal = { total: number; pendientes: number; en_revision: number; cerradas: number }
+export function consultarResumenReal(token: string) {
+  return solicitarAPI<ResumenReal>("/api/incidencias/resumen", token)
 }
 
 export function registrarIncidenciaReal(

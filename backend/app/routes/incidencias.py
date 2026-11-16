@@ -10,7 +10,7 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -286,6 +286,32 @@ def registrar_incidencia(
         db.rollback()
         raise
 
+
+
+class ResumenGeneral(BaseModel):
+    total: int
+    pendientes: int
+    en_revision: int
+    cerradas: int
+
+
+@router.get("/resumen", response_model=ResumenGeneral)
+def consultar_resumen_general(
+    usuario_actual: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Conteos completos de PostgreSQL, con el mismo alcance del listado."""
+    if usuario_actual.rol not in {"JEFE", "ASISTENTE", "PRACTICANTE", "REPRESENTANTE"}:
+        raise HTTPException(status_code=403, detail="No tiene permiso para consultar incidencias.")
+    consulta = select(
+        func.count().label("total"),
+        func.count().filter(Incidencia.estado == "Pendiente").label("pendientes"),
+        func.count().filter(Incidencia.estado == "En revisión").label("en_revision"),
+        func.count().filter(Incidencia.estado == "Cerrado").label("cerradas"),
+    ).select_from(Incidencia)
+    if usuario_actual.rol == "REPRESENTANTE":
+        consulta = consulta.where(Incidencia.area_id == usuario_actual.area_id)
+    return dict(db.execute(consulta).mappings().one())
 
 
 @router.get(

@@ -1,530 +1,205 @@
-
-import { useState, type FormEvent } from "react"
-
+import { useEffect, useRef, useState, type FormEvent } from "react"
 import {
-  iniciarSesionReal,
-  consultarPerfilReal,
-  listarIncidenciasReales,
-  type PerfilReal,
-  type IncidenciaReal,
-  type SesionReal,
+  iniciarSesionReal, consultarPerfilReal, listarIncidenciasReales, consultarResumenReal, sesionReal,
+  recibirInvitacionReal, establecerClaveInvitada,
+  type PerfilReal, type IncidenciaReal, type SesionReal, type ResumenReal,
 } from "./api"
-
 import RealRegister from "./RealRegister"
 import RealTicketDetail from "./RealTicketDetail"
+import RealAdministration from "./RealAdministration"
+import RealDashboard from "./RealDashboard"
+import { Badge, Icon } from "./RealUI"
+
+export type VistaReal = "dashboard" | "incidencias" | "asignaciones" | "atencion" | "usuarios" | "cuenta" | "registro"
+const titulos: Record<VistaReal, string> = {
+  dashboard: "Panel principal", incidencias: "Incidencias", asignaciones: "Asignaciones",
+  atencion: "Atención técnica", usuarios: "Usuarios y áreas", cuenta: "Mi cuenta", registro: "Registrar incidencia",
+}
+const errorTexto = (error: unknown) => error instanceof Error ? error.message : "No se pudo completar la consulta."
 
 export default function RealApp() {
-  // Credenciales
   const [correo, setCorreo] = useState("")
   const [contrasena, setContrasena] = useState("")
   const [mostrarClave, setMostrarClave] = useState(false)
-
-  // Sesion y datos reales
   const [sesion, setSesion] = useState<SesionReal | null>(null)
   const [perfil, setPerfil] = useState<PerfilReal | null>(null)
   const [incidencias, setIncidencias] = useState<IncidenciaReal[]>([])
-
-  // Estado de la interfaz
+  const [resumen, setResumen] = useState<ResumenReal | null>(null)
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState("")
+  const [vista, setVista] = useState<VistaReal>("dashboard")
+  const [ticketSeleccionado, setTicketSeleccionado] = useState<IncidenciaReal | null>(null)
+  const [menu, setMenu] = useState(false)
+  const [actualizado, setActualizado] = useState("")
+  const [activando, setActivando] = useState(false)
+  const [confirmacion, setConfirmacion] = useState("")
+  const generacion = useRef(0)
 
-  const [vista, setVista] =
-    useState<"lista" | "registro">("lista")
+  function limpiarSesion() {
+    generacion.current++
+    sesionReal.limpiar()
+    setSesion(null); setPerfil(null); setIncidencias([]); setResumen(null)
+    setTicketSeleccionado(null); setVista("dashboard"); setMenu(false)
+    setContrasena(""); setMostrarClave(false); setCargando(false); setActualizado("")
+    setActivando(false); setConfirmacion("")
+  }
 
-  // PASO 110D1 - Incidencia seleccionada
-  const [ticketSeleccionado, setTicketSeleccionado] =
-    useState<IncidenciaReal | null>(null)
+  useEffect(() => {
+    sesionReal.alExpirar = () => {
+      limpiarSesion()
+      setMensaje("La sesión terminó y no pudo renovarse. Inicia sesión nuevamente.")
+    }
+    return () => { sesionReal.alExpirar = null }
+  }, [])
 
-  // -------------------------------------------------
-  // INICIAR SESION
-  // -------------------------------------------------
+  useEffect(() => {
+    try {
+      const invitacion = recibirInvitacionReal()
+      if (!invitacion) return
+      setActivando(true); setCargando(true)
+      const vigente = generacion.current
+      void consultarPerfilReal(invitacion.access_token).then((autorizado) => {
+        if (vigente !== generacion.current) return
+        setSesion(invitacion); setPerfil(autorizado)
+      }).catch((error: unknown) => { limpiarSesion(); setMensaje(errorTexto(error)) })
+        .finally(() => setCargando(false))
+    } catch (error) { limpiarSesion(); setMensaje(errorTexto(error)) }
+  }, [])
 
-  async function ingresar(
-    evento: FormEvent<HTMLFormElement>,
-  ) {
+  useEffect(() => {
+    if (!sesion) return
+    const comprobar = () => {
+      void sesionReal.obtenerToken(sesion.access_token).catch((error: unknown) => setMensaje(errorTexto(error)))
+    }
+    const intervalo = window.setInterval(comprobar, 30000)
+    window.addEventListener("focus", comprobar)
+    return () => { window.clearInterval(intervalo); window.removeEventListener("focus", comprobar) }
+  }, [sesion])
+
+  async function cargarDatos(token: string) {
+    const vigente = generacion.current
+    const [lista, conteos] = await Promise.allSettled([
+      listarIncidenciasReales(token), consultarResumenReal(token),
+    ])
+    if (vigente !== generacion.current) return
+    const errores: string[] = []
+    if (lista.status === "fulfilled") {
+      setIncidencias(lista.value)
+      setActualizado(new Date().toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" }))
+    } else errores.push(errorTexto(lista.reason))
+    if (conteos.status === "fulfilled") setResumen(conteos.value)
+    else { setResumen(null); errores.push(`Indicadores no disponibles: ${errorTexto(conteos.reason)}`) }
+    if (errores.length) setMensaje([...new Set(errores)].join(" "))
+  }
+
+  async function ingresar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault()
-
     if (cargando) return
-
-    setCargando(true)
-    setMensaje("")
-
+    setCargando(true); setMensaje("")
+    const vigente = generacion.current
     try {
-      const nuevaSesion = await iniciarSesionReal(
-        correo,
-        contrasena,
-      )
-
-      const perfilAutorizado = await consultarPerfilReal(
-        nuevaSesion.access_token,
-      )
-
-      if (!perfilAutorizado.habilitado) {
-        throw new Error(
-          "Tu usuario no está habilitado.",
-        )
-      }
-
-      const registros = await listarIncidenciasReales(
-        nuevaSesion.access_token,
-      )
-
-      setSesion(nuevaSesion)
-      setPerfil(perfilAutorizado)
-      setIncidencias(registros)
-
+      const nueva = await iniciarSesionReal(correo, contrasena)
       setContrasena("")
-      setVista("lista")
-      setTicketSeleccionado(null)
+      const autorizado = await consultarPerfilReal(nueva.access_token)
+      if (!autorizado.habilitado) throw new Error("Tu usuario no está habilitado.")
+      if (vigente !== generacion.current) return
+      setSesion(nueva); setPerfil(autorizado)
+      await cargarDatos(nueva.access_token)
     } catch (error) {
-      setSesion(null)
-      setPerfil(null)
-      setIncidencias([])
-      setTicketSeleccionado(null)
-
-      setMensaje(
-        error instanceof Error
-          ? error.message
-          : "No fue posible iniciar sesión.",
-      )
-    } finally {
-      setCargando(false)
-    }
+      limpiarSesion()
+      setMensaje(errorTexto(error))
+    } finally { setCargando(false) }
   }
 
-  // -------------------------------------------------
-  // ACTUALIZAR INCIDENCIAS
-  // -------------------------------------------------
-
-  async function actualizarIncidencias() {
+  async function actualizar() {
     if (!sesion || cargando) return
-
-    setCargando(true)
-    setMensaje("")
-
+    setCargando(true); setMensaje("")
     try {
-      const registros = await listarIncidenciasReales(
-        sesion.access_token,
-      )
+      const vigente = generacion.current
+      const autorizado = await consultarPerfilReal(sesion.access_token)
+      if (vigente !== generacion.current) return
+      setPerfil(autorizado)
+      await cargarDatos(sesion.access_token)
+    } catch (error) { setMensaje(errorTexto(error)) }
+    finally { setCargando(false) }
+  }
 
-      setIncidencias(registros)
-    } catch (error) {
-      setMensaje(
-        error instanceof Error
-          ? error.message
-          : "No se pudieron actualizar las incidencias.",
-      )
-    } finally {
-      setCargando(false)
+  function navegar(destino: VistaReal) {
+    setVista(destino); setTicketSeleccionado(null); setMensaje(""); setMenu(false)
+  }
+
+  async function activarCuenta(evento: FormEvent<HTMLFormElement>) {
+    evento.preventDefault()
+    if (!sesion || cargando) return
+    if (contrasena.length < 12 || contrasena !== confirmacion) {
+      setMensaje("Usa al menos 12 caracteres y confirma la misma contraseña.")
+      return
     }
+    setCargando(true); setMensaje("")
+    try {
+      await establecerClaveInvitada(sesion.access_token, contrasena)
+      setContrasena(""); setConfirmacion(""); setActivando(false)
+      await cargarDatos(sesion.access_token)
+    } catch (error) { setMensaje(errorTexto(error)) }
+    finally { setCargando(false) }
   }
 
-  // -------------------------------------------------
-  // NAVEGACION
-  // -------------------------------------------------
+  if (activando) return <main className="login-screen real-app"><section className="login-panel"><div className="login-copy"><h2>Activa tu cuenta institucional</h2><p>Establece una contraseña para acceder con tu correo.</p></div><form onSubmit={activarCuenta}><label>Nueva contraseña<input type="password" autoComplete="new-password" required minLength={12} value={contrasena} onChange={(e) => setContrasena(e.target.value)} disabled={cargando} /></label><label>Confirmar contraseña<input type="password" autoComplete="new-password" required minLength={12} value={confirmacion} onChange={(e) => setConfirmacion(e.target.value)} disabled={cargando} /></label>{mensaje && <div className="auth-error" role="alert">{mensaje}</div>}<button className="primary login-submit" disabled={cargando || !perfil}>{cargando ? "Verificando…" : "Activar cuenta"}</button><button type="button" className="outline" disabled={cargando} onClick={() => { limpiarSesion(); setMensaje("") }}>Volver al login</button></form></section></main>
 
-  function mostrarListado() {
-    setVista("lista")
-    setTicketSeleccionado(null)
-    setMensaje("")
-  }
+  if (!sesion || !perfil) return (
+    <main className="login-screen real-app">
+      <section className="login-panel">
+        <div className="login-brand"><div className="crest large">TI</div><div><p>Municipalidad Distrital de Grocio Prado</p><h1>Soporte TI</h1></div></div>
+        <div className="login-copy"><h2>Bienvenido</h2><p>Inicia sesión con tu cuenta institucional para gestionar las incidencias de tu municipio.</p></div>
+        <form onSubmit={ingresar}>
+          <label>Correo electrónico<input type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} placeholder="correo@institucion.pe" autoComplete="username" required disabled={cargando} /></label>
+          <label>Contraseña<div className="password-field"><input aria-label="Contraseña" type={mostrarClave ? "text" : "password"} value={contrasena} onChange={(e) => setContrasena(e.target.value)} autoComplete="current-password" required disabled={cargando} /><button type="button" onClick={() => setMostrarClave(!mostrarClave)}>{mostrarClave ? "Ocultar" : "Mostrar"}</button></div></label>
+          {mensaje && <div className="auth-error" role="alert">{mensaje}</div>}
+          <button type="submit" className="primary login-submit" disabled={cargando}>{cargando ? "Verificando acceso…" : "Iniciar sesión"}</button>
+        </form>
+        <p className="login-foot">Municipalidad Distrital de Grocio Prado · Acceso institucional</p>
+      </section>
+    </main>
+  )
 
-  function mostrarRegistro() {
-    setVista("registro")
-    setTicketSeleccionado(null)
-    setMensaje("")
-  }
-
-  function abrirDetalle(ticket: IncidenciaReal) {
-    setTicketSeleccionado(ticket)
-    setVista("lista")
-    setMensaje("")
-  }
-
-  // -------------------------------------------------
-  // CERRAR SESION
-  // -------------------------------------------------
-
-  function cerrarSesion() {
-    setSesion(null)
-    setPerfil(null)
-    setIncidencias([])
-    setTicketSeleccionado(null)
-
-    setContrasena("")
-    setCorreo("")
-    setMensaje("")
-    setVista("lista")
-    setMostrarClave(false)
-  }
-
-  // -------------------------------------------------
-  // PANTALLA DE INICIO DE SESION
-  // -------------------------------------------------
-
-  if (!sesion || !perfil) {
-    return (
-      <main className="login-screen">
-        <section className="login-panel">
-          <div className="login-brand">
-            <div className="crest large">
-              TI
-            </div>
-
-            <div>
-              <p>
-                Municipalidad Distrital de Grocio Prado
-              </p>
-              <h1>Soporte TI</h1>
-            </div>
-          </div>
-
-          <div className="login-copy">
-            <h2>Bienvenido</h2>
-
-            <p>
-              Inicia sesión con tu cuenta institucional
-              autorizada para acceder al sistema.
-            </p>
-          </div>
-
-          <form onSubmit={ingresar}>
-            <label>
-              Correo electrónico
-
-              <input
-                type="email"
-                value={correo}
-                onChange={(e) =>
-                  setCorreo(e.target.value)
-                }
-                placeholder="correo@institucion.pe"
-                autoComplete="username"
-                required
-              />
-            </label>
-
-            <label>
-              Contraseña
-
-              <div className="password-field">
-                <input
-                  type={
-                    mostrarClave
-                      ? "text"
-                      : "password"
-                  }
-                  value={contrasena}
-                  onChange={(e) =>
-                    setContrasena(e.target.value)
-                  }
-                  autoComplete="current-password"
-                  required
-                />
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setMostrarClave(!mostrarClave)
-                  }
-                >
-                  {mostrarClave
-                    ? "Ocultar"
-                    : "Mostrar"}
-                </button>
-              </div>
-            </label>
-
-            {mensaje && (
-              <div
-                className="auth-error"
-                role="alert"
-              >
-                {mensaje}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              className="primary login-submit"
-              disabled={cargando}
-            >
-              {cargando
-                ? "Verificando acceso..."
-                : "Iniciar sesión"}
-            </button>
-          </form>
-
-          <p className="login-foot">
-            Acceso real mediante Supabase Auth.
-            Solo usuarios autorizados.
-          </p>
-        </section>
-      </main>
-    )
-  }
-
-  // -------------------------------------------------
-  // PANEL PRINCIPAL
-  // -------------------------------------------------
+  const jefe = perfil.rol === "JEFE"
+  const representante = perfil.rol === "REPRESENTANTE"
+  const tecnico = ["JEFE", "ASISTENTE", "PRACTICANTE"].includes(perfil.rol)
+  const opciones: { vista: VistaReal; icono: string }[] = [
+    { vista: "dashboard", icono: "dashboard" }, { vista: "incidencias", icono: "clipboard" },
+    ...(jefe ? [{ vista: "asignaciones" as const, icono: "users" }] : []),
+    ...(tecnico ? [{ vista: "atencion" as const, icono: "tool" }] : []),
+    ...(jefe ? [{ vista: "usuarios" as const, icono: "users" }] : []),
+    { vista: "cuenta", icono: "user" },
+  ]
+  const vistaPermitida = (vista !== "usuarios" && vista !== "asignaciones" || jefe) && (vista !== "atencion" || tecnico) && (vista !== "registro" || representante)
+  const iniciales = perfil.nombre_completo.split(" ").filter(Boolean).map((x) => x[0]).slice(0, 2).join("")
 
   return (
-    <main className="app-shell">
-      {/* MENU LATERAL */}
-
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="crest">
-            TI
-          </div>
-
-          <div>
-            <strong>Soporte TI</strong>
-            <span>Grocio Prado</span>
-          </div>
-        </div>
-
-        <div className="prototype">
-          INTEGRACIÓN REAL · ETAPA DE PRUEBAS
-        </div>
-
-        <div className="sidebar-bottom">
-          <div className="profile-mini">
-            <div className="avatar">
-              {perfil.nombre_completo.charAt(0)}
-            </div>
-
-            <div>
-              <b>{perfil.nombre_completo}</b>
-              <span>{perfil.rol}</span>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            className="profile-switch"
-            onClick={cerrarSesion}
-          >
-            Cerrar sesión
-          </button>
-        </div>
+    <main className="app-shell real-app">
+      {menu && <button className="sidebar-backdrop" aria-label="Cerrar menú" onClick={() => setMenu(false)} />}
+      <aside id="menu-principal" className={`sidebar${menu ? " open" : ""}`}>
+        <div className="brand"><div className="crest">TI</div><div><strong>Soporte TI</strong><span>Grocio Prado</span></div></div>
+        <div className="prototype">GESTIÓN DE INCIDENCIAS</div>
+        <nav aria-label="Navegación principal">{opciones.map((opcion) => <button type="button" key={opcion.vista} className={`nav-item${vista === opcion.vista ? " active" : ""}`} aria-current={vista === opcion.vista ? "page" : undefined} onClick={() => navegar(opcion.vista)}><Icon name={opcion.icono} />{titulos[opcion.vista]}</button>)}</nav>
+        <div className="sidebar-bottom"><button className="profile-mini account-trigger" onClick={() => navegar("cuenta")}><div className="avatar">{iniciales}</div><div><b>{perfil.nombre_completo}</b><span>{perfil.rol}</span></div></button><button className="profile-switch" onClick={() => { limpiarSesion(); setCorreo(""); setMensaje("") }}>Cerrar sesión</button></div>
       </aside>
-
-      {/* CONTENIDO PRINCIPAL */}
-
       <section className="content">
         <header className="topbar">
-          <div>
-            <p className="breadcrumb">
-              Sistema de Gestión de Incidencias
-            </p>
-
-            <h1>
-              {vista === "registro" &&
-              perfil.rol === "REPRESENTANTE"
-                ? "Registrar incidencia"
-                : ticketSeleccionado
-                  ? "Detalle de incidencia"
-                  : "Incidencias registradas"}
-            </h1>
-          </div>
+          <button className="menu-button" aria-label={menu ? "Cerrar menú" : "Abrir menú"} aria-expanded={menu} aria-controls="menu-principal" onClick={() => setMenu(!menu)}>☰</button>
+          <div><p className="breadcrumb">Sistema de Gestión de Incidencias / {titulos[vista]}</p><h1>{ticketSeleccionado ? "Detalle de incidencia" : titulos[vista]}</h1></div>
+          <div className="top-actions"><span className="connection-label"><i />Acceso institucional</span><button className="avatar avatar-button" aria-label="Abrir mi cuenta" onClick={() => navegar("cuenta")}>{iniciales}</button></div>
         </header>
-
         <div className="page">
-          {/* OPCIONES DEL REPRESENTANTE */}
-
-          {perfil.rol === "REPRESENTANTE" && (
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                marginBottom: 20,
-                flexWrap: "wrap",
-              }}
-            >
-              <button
-                type="button"
-                className="outline"
-                onClick={mostrarListado}
-              >
-                Mis incidencias
-              </button>
-
-              <button
-                type="button"
-                className="primary"
-                onClick={mostrarRegistro}
-              >
-                Registrar incidencia
-              </button>
-            </div>
-          )}
-
-          {/* VISTA DE REGISTRO */}
-
-          {vista === "registro" &&
-          perfil.rol === "REPRESENTANTE" ? (
-            <RealRegister
-              token={sesion.access_token}
-              onCancelar={mostrarListado}
-              onCreada={async (codigo) => {
-                setVista("lista")
-                setTicketSeleccionado(null)
-
-                setMensaje(
-                  `Incidencia ${codigo} registrada correctamente.`,
-                )
-
-                try {
-                  const registros =
-                    await listarIncidenciasReales(
-                      sesion.access_token,
-                    )
-
-                  setIncidencias(registros)
-                } catch {
-                  setMensaje(
-                    `Incidencia ${codigo} registrada, ` +
-                    "pero no se pudo actualizar el listado.",
-                  )
-                }
-              }}
-            />
+          {mensaje && <div className="notice real-message" role="status">{mensaje}</div>}
+          {!vistaPermitida ? <div className="card empty"><h2>Esta sección requiere otro rol</h2><button className="outline" onClick={() => navegar("dashboard")}>Volver al panel</button></div> : vista === "usuarios" && jefe ? <RealAdministration token={sesion.access_token} perfil={perfil} /> : vista === "cuenta" ? (
+            <section className="card real-account"><div className="section-head"><div><h2>Mi cuenta institucional</h2><p>Perfil autorizado por la Municipalidad Distrital de Grocio Prado.</p></div><Badge>{perfil.habilitado ? "Habilitado" : "Deshabilitado"}</Badge></div><dl className="real-profile-grid"><div><dt>Nombre completo</dt><dd>{perfil.nombre_completo}</dd></div><div><dt>Usuario</dt><dd>{perfil.usuario}</dd></div><div><dt>Rol</dt><dd>{perfil.rol}</dd></div><div><dt>Área municipal</dt><dd>{perfil.area_nombre || "Área institucional asignada"}</dd></div></dl><p className="help">Para cambiar tus datos o permisos, contacta a la jefatura de Sistemas.</p><button className="outline" onClick={actualizar} disabled={cargando}>Actualizar perfil</button></section>
+          ) : vista === "registro" && representante ? (
+            <RealRegister token={sesion.access_token} onCancelar={() => navegar("incidencias")} onCreada={async (codigo) => { navegar("incidencias"); setMensaje(`Incidencia ${codigo} registrada correctamente.`); await cargarDatos(sesion.access_token) }} />
           ) : ticketSeleccionado ? (
-            /* PASO 110D1 - DETALLE REAL */
-
-                        
-            <RealTicketDetail
-              token={sesion.access_token}
-              ticket={ticketSeleccionado}
-              rol={perfil.rol}
-              onVolver={() => {
-                mostrarListado()
-                void actualizarIncidencias()
-              }}
-            />
+            <RealTicketDetail token={sesion.access_token} ticket={ticketSeleccionado} rol={perfil.rol} onVolver={() => { setTicketSeleccionado(null); void actualizar() }} />
           ) : (
-            /* LISTADO DE INCIDENCIAS */
-
-            <>
-              <div className="page-title-row">
-                <div>
-                  <h2>
-                    Seguimiento de incidencias
-                  </h2>
-
-                  <p>
-                    Registros obtenidos de la API
-                    y PostgreSQL.
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  className="primary"
-                  onClick={actualizarIncidencias}
-                  disabled={cargando}
-                >
-                  {cargando
-                    ? "Actualizando..."
-                    : "Actualizar"}
-                </button>
-              </div>
-
-              {/* MENSAJES DEL SISTEMA */}
-
-              {mensaje && (
-                <div
-                  className="auth-error"
-                  role="alert"
-                >
-                  {mensaje}
-                </div>
-              )}
-
-              {/* TABLA DE INCIDENCIAS */}
-
-              <div
-                style={{
-                  background: "#fff",
-                  border: "1px solid #e1e7ee",
-                  borderRadius: 12,
-                  padding: 20,
-                  overflowX: "auto",
-                }}
-              >
-                <p>
-                  <strong>
-                    Total de registros:
-                  </strong>{" "}
-                  {incidencias.length}
-                </p>
-
-                <table
-                  style={{
-                    width: "100%",
-                    borderCollapse: "collapse",
-                    textAlign: "left",
-                  }}
-                >
-                  <thead>
-                    <tr>
-                      <th>Código</th>
-                      <th>Asunto</th>
-                      <th>Estado</th>
-                      <th>Prioridad</th>
-                      <th>Fecha</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {incidencias.map((ticket) => (
-                      <tr key={ticket.id}>
-                        <td>
-                          <button
-                            type="button"
-                            className="outline"
-                            onClick={() =>
-                              abrirDetalle(ticket)
-                            }
-                          >
-                            {ticket.codigo}
-                          </button>
-                        </td>
-
-                        <td>
-                          {ticket.asunto}
-                        </td>
-
-                        <td>
-                          {ticket.estado}
-                        </td>
-
-                        <td>
-                          {ticket.prioridad ||
-                            "Sin definir"}
-                        </td>
-
-                        <td>
-                          {new Date(
-                            ticket.fecha_registro,
-                          ).toLocaleDateString(
-                            "es-PE",
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                {incidencias.length === 0 && (
-                  <p>
-                    No hay incidencias disponibles
-                    para este usuario.
-                  </p>
-                )}
-              </div>
-            </>
+            <RealDashboard key={vista} vista={vista} representante={representante} incidencias={incidencias} resumen={resumen} cargando={cargando} actualizado={actualizado} actualizar={() => void actualizar()} navegar={navegar} abrirDetalle={setTicketSeleccionado} />
           )}
         </div>
       </section>
