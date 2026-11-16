@@ -26,6 +26,10 @@ type DetalleIncidencia = IncidenciaReal & {
   impacto: string | null
   fecha_cierre: string | null
   cerrado_por_usuario_id: string | null
+  fecha_inicio_problema: string | null
+  hora_inicio_problema: string | null
+  incidencia_anterior_id: string | null
+  detalle_reincidencia: string | null
 }
 
 type Evento = {
@@ -137,7 +141,7 @@ export default function RealTicketDetail({ token, ticket, rol, onVolver }: Props
   ]
 
   return (
-    <div style={{ display: "grid", gap: 18 }}>
+    <div className="real-detail" style={{ display: "grid", gap: 18 }}>
       <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
         <button type="button" onClick={onVolver} style={boton}>← Volver al listado</button>
         <button
@@ -251,12 +255,16 @@ export default function RealTicketDetail({ token, ticket, rol, onVolver }: Props
             <Campo nombre="Equipo o sistema" valor={detalle.equipo_sistema_afectado} />
             <Campo nombre="Ubicación" valor={detalle.ubicacion} />
             <Campo nombre="Impacto" valor={detalle.impacto} />
+            <Campo nombre="Área municipal" valor={ticket.area_nombre} />
+            <Campo nombre="Inicio del problema" valor={detalle.fecha_inicio_problema} />
+            <Campo nombre="Hora aproximada" valor={detalle.hora_inicio_problema} />
             <Campo nombre="Fecha de registro" valor={fecha(detalle.fecha_registro)} />
             <Campo nombre="Fecha de cierre" valor={fecha(detalle.fecha_cierre)} />
           </div>
           <div>
             <p style={etiquetas}>Descripción del problema</p>
             <p style={{ ...valores, whiteSpace: "pre-wrap", fontWeight: 400 }}>{detalle.descripcion}</p>
+            {detalle.incidencia_anterior_id && <div className="notice"><b>Antecedente vinculado</b><p>Referencia: {detalle.incidencia_anterior_id}</p><p>{detalle.detalle_reincidencia || "Sin observaciones adicionales."}</p></div>}
           </div>
         </section>
       )}

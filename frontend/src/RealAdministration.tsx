@@ -3,7 +3,7 @@ import { solicitarAPI, type PerfilReal, type Rol } from "./api"
 import { Badge, Icon } from "./RealUI"
 
 type Area = { id: string; nombre: string; activo: boolean }
-type Configuracion = { edicion_habilitada: boolean; invitaciones_habilitadas: boolean; motivos: string[] }
+type Configuracion = { permisos_verificados?: boolean; edicion_habilitada: boolean; invitaciones_habilitadas: boolean; motivos: string[] }
 const roles: Rol[] = ["JEFE", "ASISTENTE", "PRACTICANTE", "REPRESENTANTE"]
 const mensajeError = (error: unknown) => error instanceof Error ? error.message : "No se pudo completar la operación."
 
@@ -34,7 +34,7 @@ export default function RealAdministration({ token, perfil }: { token: string; p
       solicitarAPI<Configuracion>("/api/administracion/configuracion", token),
     ]).then(([personas, dependencias, config]) => {
       if (!vigente) return
-      setUsuarios(personas); setAreas(dependencias); setConfiguracion(config)
+      setUsuarios(personas); setAreas(dependencias); setConfiguracion({ ...config, edicion_habilitada: config.edicion_habilitada && config.permisos_verificados === true, invitaciones_habilitadas: config.invitaciones_habilitadas && config.permisos_verificados === true })
     }).catch((fallo: unknown) => { if (vigente) setError(mensajeError(fallo)) })
       .finally(() => { if (vigente) setCargando(false) })
     return () => { vigente = false }
@@ -71,14 +71,14 @@ export default function RealAdministration({ token, perfil }: { token: string; p
   const visibles = usuarios.filter((persona) => `${persona.nombre_completo} ${persona.usuario} ${persona.rol} ${areas.find((a) => a.id === persona.area_id)?.nombre || ""}`.toLocaleLowerCase("es").includes(busqueda.trim().toLocaleLowerCase("es")))
 
   return <div className="real-admin">
-    <div className="page-title-row"><div><h2>Usuarios y áreas</h2><p>Administración de perfiles institucionales de la Unidad de Sistemas.</p></div><div className="real-actions"><button className="outline" onClick={() => setRecarga((x) => x + 1)} disabled={cargando}><Icon name="refresh" />Actualizar</button><button className="primary" onClick={() => abrir("invitar")} disabled={cargando || !configuracion?.invitaciones_habilitadas}><Icon name="plus" />Invitar usuario</button></div></div>
+    <div className="page-title-row"><div><h2>Gestión de usuarios y áreas</h2><p>Administración exclusiva del Jefe de Sistemas.</p></div><div className="real-actions"><button className="outline" onClick={() => setRecarga((x) => x + 1)} disabled={cargando}><Icon name="refresh" />Actualizar</button><button className="primary" onClick={() => abrir("invitar")} disabled={cargando || !configuracion?.invitaciones_habilitadas}><Icon name="plus" />Nuevo usuario</button></div></div>
     {mensaje && <div className="notice" role="status">{mensaje}</div>}
     {!edicion && error && <div className="auth-error" role="alert">{error}</div>}
-    {configuracion && configuracion.motivos.length > 0 && <div className="notice observation-notice"><b>Configuración pendiente</b>{configuracion.motivos.map((motivo) => <p key={motivo}>{motivo}</p>)}<p>La consulta de usuarios y áreas permanece disponible.</p></div>}
+    {configuracion && configuracion.motivos.length > 0 && <div className="notice observation-notice"><b>Configuración pendiente</b>{configuracion.motivos.map((motivo) => <p key={motivo}>{motivo}</p>)}<p>La consulta de usuarios y áreas permanece disponible. Las invitaciones y Brevo siguen pendientes de configuración y pruebas.</p></div>}
     <section className="card table-card" aria-busy={cargando}>
-      <div className="section-head"><div><h3>Directorio de usuarios</h3><p>El estado indica el permiso del perfil en el sistema.</p></div><span className="badge slate">{usuarios.length} perfiles</span></div>
+      <div className="section-head"><div><h3>Directorio de usuarios</h3><p>El estado indica el permiso del perfil. Se muestra el usuario real; los correos de otras cuentas no se consultan en Auth.</p></div><span className="badge slate">{usuarios.length} perfiles</span></div>
       <div className="filters real-filters"><label className="search"><Icon name="search" /><input aria-label="Buscar usuarios" placeholder="Buscar nombre, usuario, rol o área…" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} /></label></div>
-      {cargando ? <div className="empty" role="status">Consultando directorio…</div> : visibles.length ? <div className="table-wrap" tabIndex={0} role="region" aria-label="Directorio de usuarios"><table><thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Área</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{visibles.map((persona) => <tr key={persona.id}><td>{persona.nombre_completo}</td><td>{persona.usuario}</td><td>{persona.rol}</td><td>{areas.find((a) => a.id === persona.area_id)?.nombre || "Área no disponible"}</td><td><Badge>{persona.habilitado ? "Habilitado" : "Deshabilitado"}</Badge></td><td><button className="row-action" onClick={() => abrir(persona)} disabled={!configuracion?.edicion_habilitada}>Editar perfil</button></td></tr>)}</tbody></table></div> : <div className="empty"><Icon name="users" /><h3>{error ? "Directorio no disponible" : "Sin usuarios para mostrar"}</h3><p>{busqueda ? "Prueba otro nombre o área." : "Los perfiles autorizados aparecerán aquí."}</p></div>}
+      {cargando ? <div className="empty" role="status">Consultando directorio…</div> : visibles.length ? <div className="table-wrap" tabIndex={0} role="region" aria-label="Directorio de usuarios"><table><thead><tr><th>Nombre</th><th>Usuario</th><th>Área</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{visibles.map((persona) => <tr key={persona.id}><td>{persona.nombre_completo}</td><td>{persona.usuario}</td><td>{areas.find((a) => a.id === persona.area_id)?.nombre || "Área no disponible"}</td><td>{persona.rol}</td><td><Badge>{persona.habilitado ? "Habilitado" : "Deshabilitado"}</Badge></td><td><button className="row-action" onClick={() => abrir(persona)} disabled={!configuracion?.edicion_habilitada}>Editar</button></td></tr>)}</tbody></table></div> : <div className="empty"><Icon name="users" /><h3>{error ? "Directorio no disponible" : "Sin usuarios para mostrar"}</h3><p>{busqueda ? "Prueba otro nombre o área." : "Los perfiles autorizados aparecerán aquí."}</p></div>}
     </section>
     <section className="card"><h3>Áreas municipales</h3><p className="help">Solo se pueden asignar áreas activas.</p><div className="admin-areas">{areas.map((dependencia) => <span className="admin-area" key={dependencia.id}>{dependencia.nombre} · <Badge>{dependencia.activo ? "Activa" : "Inactiva"}</Badge></span>)}</div>{!cargando && !areas.length && <p className="help">No hay áreas disponibles.</p>}</section>
     {edicion && <div className="overlay"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="admin-titulo"><button className="close" aria-label="Cerrar formulario" disabled={guardando} onClick={() => { setEdicion(null); setError("") }}>×</button><h2 id="admin-titulo">{edicion === "invitar" ? "Invitar usuario" : "Editar perfil"}</h2><form onSubmit={guardar}>

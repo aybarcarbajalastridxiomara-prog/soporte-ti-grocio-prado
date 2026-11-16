@@ -1,6 +1,7 @@
 
 from datetime import date, datetime, time, timezone
 from uuid import UUID
+from typing import Literal
 
 from fastapi import (
     APIRouter,
@@ -15,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.db import get_db
+from app.lecturas_incidencias import condicion_ciclo, enriquecer_incidencias
 from app.models import (
     Asignacion,
     HistorialIncidencia,
@@ -47,6 +49,10 @@ class IncidenciaResumen(BaseModel):
     estado: EstadoIncidencia
     prioridad: str | None
     fecha_registro: datetime
+    area_nombre: str | None = None
+    responsable_id: UUID | None = None
+    responsable_nombre: str | None = None
+    responsable_tipo: Literal["activo", "cierre", "sin_asignar"] | None = None
 
 class IncidenciaDetalle(BaseModel):
     """Informacion completa de una incidencia."""
@@ -125,6 +131,7 @@ class CierreRespuesta(BaseModel):
 def listar_incidencias(
     estado: EstadoIncidencia | None = None,
     limite: int = Query(default=50, ge=1, le=100),
+    mis_atenciones: bool = False,
     usuario_actual: Usuario = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -143,7 +150,18 @@ def listar_incidencias(
             detail="No tiene permiso para consultar incidencias.",
         )
 
+    if mis_atenciones and usuario_actual.rol == "REPRESENTANTE":
+        raise HTTPException(403, "Solo personal TI puede consultar sus atenciones.")
+    ciclo = condicion_ciclo(db) if mis_atenciones else None
     consulta = select(Incidencia)
+
+    if mis_atenciones:
+        propia = select(Asignacion.id).where(
+            Asignacion.incidencia_id == Incidencia.id,
+            Asignacion.tecnico_id == usuario_actual.id,
+            Asignacion.fecha_fin.is_(None), ciclo,
+        ).correlate(Incidencia).exists()
+        consulta = consulta.where(propia, Incidencia.estado != "Cerrado")
 
     if usuario_actual.rol == "REPRESENTANTE":
         consulta = consulta.where(
@@ -164,7 +182,12 @@ def listar_incidencias(
         .limit(limite)
     )
 
-    return db.scalars(consulta).all()
+    registros = db.scalars(consulta).all()
+    if not registros:
+        return []
+    if ciclo is None:
+        ciclo = condicion_ciclo(db)
+    return enriquecer_incidencias(db, registros, ciclo)
 
 
 @router.post(

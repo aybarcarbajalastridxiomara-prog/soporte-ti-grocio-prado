@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -113,9 +113,74 @@ def estado_administracion() -> dict:
     }
 
 
+def permisos_administrativos_verificados(db: Session) -> bool:
+    """Comprobación conservadora de lectura; nunca aplica GRANT ni cambia RLS."""
+    if db.get_bind().dialect.name != "postgresql":
+        return False
+    return bool(db.execute(text("""
+        SELECT current_user = 'soporte_ti_api'
+          AND NOT (SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user)
+          AND has_schema_privilege(current_user,'public','USAGE')
+          AND has_table_privilege(current_user,'public.usuarios','SELECT')
+          AND has_table_privilege(current_user,'public.areas','SELECT')
+          AND has_any_column_privilege(current_user,'public.areas','UPDATE')
+          AND NOT EXISTS (
+            SELECT 1 FROM (VALUES ('id'),('area_id'),('nombre_completo'),('usuario'),('rol'),('habilitado')) c(nombre)
+            WHERE NOT has_column_privilege(current_user,'public.usuarios',c.nombre,'INSERT')
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM (VALUES ('area_id'),('nombre_completo'),('usuario'),('rol'),('habilitado')) c(nombre)
+            WHERE NOT has_column_privilege(current_user,'public.usuarios',c.nombre,'UPDATE')
+          )
+          AND (SELECT count(*)=2 AND bool_and(relrowsecurity) FROM pg_class
+               WHERE oid IN ('public.usuarios'::regclass,'public.areas'::regclass))
+          AND EXISTS (
+            SELECT 1 FROM pg_trigger t JOIN pg_proc f ON f.oid=t.tgfoid
+              JOIN pg_namespace n ON n.oid=f.pronamespace
+            WHERE t.tgrelid='public.usuarios'::regclass
+              AND t.tgname='trg_validar_cupo_representantes' AND t.tgenabled IN ('O','A')
+              AND NOT t.tgisinternal AND NOT f.prosecdef
+              AND n.nspname='public' AND f.proname='validar_cupo_representantes'
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM pg_trigger t WHERE t.tgrelid='public.usuarios'::regclass
+              AND NOT t.tgisinternal AND t.tgname<>'trg_validar_cupo_representantes'
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM pg_policies p WHERE p.schemaname='public'
+              AND p.tablename IN ('usuarios','areas') AND p.permissive='RESTRICTIVE'
+              AND ('soporte_ti_api'::name=ANY(p.roles) OR 'public'::name=ANY(p.roles))
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM (VALUES ('usuarios','SELECT'),('usuarios','INSERT'),('usuarios','UPDATE'),('areas','SELECT'),('areas','UPDATE')) req(tabla,operacion)
+            WHERE NOT EXISTS (
+              SELECT 1 FROM pg_policies p WHERE p.schemaname='public' AND p.tablename=req.tabla
+                AND p.cmd IN (req.operacion,'ALL') AND 'soporte_ti_api'::name=ANY(p.roles)
+                AND p.permissive='PERMISSIVE'
+                AND (req.operacion='INSERT' OR p.qual='true')
+                AND (req.operacion='SELECT' OR COALESCE(p.with_check,p.qual)='true')
+            )
+          )
+    """)).scalar_one())
+
+
 @router.get("/administracion/configuracion")
-def consultar_configuracion_administrativa(_jefe: Usuario = Depends(require_roles("JEFE"))):
-    return estado_administracion()
+def consultar_configuracion_administrativa(
+    _jefe: Usuario = Depends(require_roles("JEFE")), db: Session = Depends(get_db),
+):
+    configuracion = estado_administracion()
+    verificados = False
+    if configuracion["edicion_habilitada"]:
+        try:
+            verificados = permisos_administrativos_verificados(db)
+        except SQLAlchemyError:
+            db.rollback()
+        if not verificados:
+            configuracion["motivos"].append("Los permisos PostgreSQL, RLS y el bloqueo de áreas no están verificados para administrar perfiles.")
+    configuracion["permisos_verificados"] = verificados
+    configuracion["edicion_habilitada"] = configuracion["edicion_habilitada"] and verificados
+    configuracion["invitaciones_habilitadas"] = configuracion["invitaciones_habilitadas"] and verificados
+    return configuracion
 
 
 @router.get("/usuarios", response_model=list[MiPerfil])

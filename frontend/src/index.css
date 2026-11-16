@@ -27,6 +27,56 @@
   overflow: visible;
 }
 
+/* Fase 112B: composición real; conserva el login y los controles de 111B. */
+.real-app .page{min-width:0;width:100%}
+.real-app .card,.real-app .table-wrap{min-width:0;max-width:100%}
+.real-app .real-ticket-table{min-width:1060px}
+.real-app .real-ticket-table td:nth-child(2){min-width:210px}
+.real-app .real-ticket-table td:nth-child(3){white-space:normal;min-width:130px}
+.real-app .cell-caption{display:block;color:#65758b;font-size:10px;margin-top:4px}
+.real-app .real-stack{display:grid;gap:20px}
+.real-app .real-stack>.welcome{margin-bottom:0}
+.real-app .real-form label{display:grid;gap:6px;font-size:11px;color:#526879;margin:14px 0}
+.real-app .real-form textarea{resize:vertical;line-height:1.55;min-height:90px}
+.real-app .real-form input,.real-app .real-form select,.real-app .real-form textarea{min-width:0;max-width:100%}
+.real-app .real-form input[readonly]{background:#f7f9fb;color:#425567}
+.real-app .real-form .password-field input{padding-right:75px;margin:0}
+.real-app .real-form .password-field button{top:7px}
+.real-app .real-form .help{line-height:1.65}
+.real-app .real-form .notice{margin:14px 0}
+.real-app .real-form button[type=submit]{margin-top:10px}
+.real-app .real-form .form-row{align-items:start}
+.real-app .real-register{max-width:1040px}
+.real-app .real-register .detail-header{border:0;margin-bottom:22px;padding-bottom:0}
+.real-app .real-register fieldset{border:0;margin:0 0 28px;padding:0;min-width:0}
+.real-app .real-register legend{font-size:14px;font-weight:600;color:#243447;margin-bottom:7px;padding:0}
+.real-app .real-register .form-row-three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.real-app .attachment-pending{padding:18px;border:1px dashed #aebfd0;border-radius:8px;background:#f7f9fb}
+.real-app .attachment-pending input{font-size:11px}
+.real-app .field-error{font-size:12px;color:#a32929;line-height:1.6}
+.real-app .real-assignment .section-head{margin-bottom:6px}
+.real-app .assignment-selection{border:0;margin:0;padding:0;min-width:0}
+.real-app .real-assignment form>.real-actions{margin-top:14px}
+.real-app .real-history{margin:16px 0 0;padding-left:20px;color:#425567}
+.real-app .real-history li{padding:0 0 16px;overflow-wrap:anywhere}
+.real-app .real-history p{font-size:12px;line-height:1.6;margin:5px 0}
+.real-app .real-history small{font-size:10px;color:#65758b}
+.real-app .real-account-grid{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
+.real-app .real-detail .notice{overflow-wrap:anywhere}
+.real-app textarea:focus-visible{outline:3px solid #5b9dd2;outline-offset:3px}
+@media(max-width:900px){
+  .real-app .sidebar{visibility:hidden}
+  .real-app .sidebar.open{visibility:visible}
+  .real-app .real-account-grid{grid-template-columns:1fr}
+  .real-app .real-register .form-row-three{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:520px){
+  .real-app .real-register .form-row-three,.real-app .real-form .form-row{grid-template-columns:minmax(0,1fr);gap:0}
+  .real-app .real-form .modal-actions{flex-wrap:wrap}
+  .real-app .real-form .modal-actions>button{flex:1}
+  .real-app .real-ticket-table{min-width:1000px}
+}
+
 .real-app .real-filters .search {
   display: flex;
   align-items: center;

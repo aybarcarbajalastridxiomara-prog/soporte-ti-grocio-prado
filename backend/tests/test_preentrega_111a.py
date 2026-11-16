@@ -18,15 +18,15 @@ from app.auth import get_identity
 from app.config import get_settings
 from app.db import get_db
 from app.main import app
-from app.models import Area, Incidencia, Usuario
+from app.models import Area, Asignacion, Incidencia, Usuario
 
 
 class Preentrega111A(unittest.TestCase):
     def setUp(self):
         self.engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-        # Copias de las tres tablas, sin FK de auth.users ni defaults PostgreSQL.
+        # Copias aisladas, sin FK de auth.users ni defaults PostgreSQL.
         metadata = MetaData()
-        for original in (Area.__table__, Usuario.__table__, Incidencia.__table__):
+        for original in (Area.__table__, Usuario.__table__, Incidencia.__table__, Asignacion.__table__):
             table = original.to_metadata(metadata)
             for constraint in list(table.foreign_key_constraints):
                 table.constraints.remove(constraint)
@@ -59,11 +59,14 @@ class Preentrega111A(unittest.TestCase):
             supabase_smtp_configurado=True)
         self.config_patch = patch("app.routes.usuarios.get_settings", lambda: self.settings)
         self.config_patch.start()
+        self.ciclo_patch = patch("app.lecturas_incidencias.esquema_v4_disponible", return_value=False)
+        self.ciclo_patch.start()
         self.client = TestClient(app)
 
     def tearDown(self):
         self.client.close()
         self.config_patch.stop()
+        self.ciclo_patch.stop()
         app.dependency_overrides.clear()
         self.engine.dispose()
 

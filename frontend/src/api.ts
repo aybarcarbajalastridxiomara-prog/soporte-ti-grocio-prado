@@ -41,6 +41,10 @@ export type IncidenciaReal = {
   estado: "Pendiente" | "En revisión" | "Cerrado"
   prioridad: string | null
   fecha_registro: string
+  area_nombre?: string | null
+  responsable_id?: string | null
+  responsable_nombre?: string | null
+  responsable_tipo?: "activo" | "cierre" | "sin_asignar" | null
 }
 
 export type NuevaIncidencia = {
@@ -50,6 +54,11 @@ export type NuevaIncidencia = {
   equipo_sistema_afectado?: string | null
   ubicacion?: string | null
   impacto?: "Si" | "Parcialmente" | "No" | null
+  fecha_inicio_problema?: string | null
+  hora_inicio_problema?: string | null
+  reincidente?: boolean
+  incidencia_anterior_id?: string | null
+  detalle_reincidencia?: string | null
 }
 
 function validarSesion(valor: unknown): SesionReal {
@@ -199,11 +208,76 @@ export function consultarPerfilReal(token: string) {
   return solicitarAPI<PerfilReal>("/api/me", token)
 }
 
-export function listarIncidenciasReales(token: string) {
+export function listarIncidenciasReales(token: string, opciones: { misAtenciones?: boolean; estado?: string; limite?: number } = {}) {
+  const parametros = new URLSearchParams()
+  if (opciones.misAtenciones) parametros.set("mis_atenciones", "true")
+  if (opciones.estado) parametros.set("estado", opciones.estado)
+  if (opciones.limite) parametros.set("limite", String(opciones.limite))
   return solicitarAPI<IncidenciaReal[]>(
-    "/api/incidencias",
+    `/api/incidencias${parametros.size ? `?${parametros}` : ""}`,
     token,
   )
+}
+
+export type UsuarioAuth = { id: string; email?: string; email_confirmed_at?: string | null }
+
+/** Solo la identidad propia de Auth; nunca el directorio administrativo. */
+export async function consultarUsuarioAuth(token: string): Promise<UsuarioAuth> {
+  let access = await sesionReal.obtenerToken(token)
+  const enviar = () => fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: { apikey: PUBLIC_KEY, Authorization: `Bearer ${access}` },
+    cache: "no-store", signal: AbortSignal.timeout(15000),
+  })
+  let respuesta = await enviar()
+  if (respuesta.status === 401) { access = await sesionReal.renovar(access); respuesta = await enviar() }
+  if (respuesta.status === 401) sesionReal.expirar()
+  if (!respuesta.ok) throw new Error("No se pudo verificar tu identidad en Supabase Auth.")
+  const usuario = await respuesta.json() as UsuarioAuth
+  if (!usuario.id) throw new Error("La identidad recibida no es válida.")
+  return usuario
+}
+
+/** Reautenticación independiente: nunca sustituye la sesión de otra pestaña/identidad. */
+export async function cambiarClaveReal(token: string, identidad: string, actual: string, nueva: string) {
+  if (!actual || nueva.length < 12) throw new Error("Introduce la contraseña actual y una nueva de al menos 12 caracteres.")
+  const usuario = await consultarUsuarioAuth(token)
+  if (usuario.id !== identidad || !usuario.email) throw new Error("La identidad no coincide con tu perfil. Inicia sesión nuevamente.")
+  let accesoReautenticado = ""
+  try {
+    const respuesta = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: "POST", headers: { apikey: PUBLIC_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ email: usuario.email, password: actual }), cache: "no-store",
+      signal: AbortSignal.timeout(15000),
+    })
+    if (respuesta.status === 429) throw new Error("Demasiados intentos. Espera antes de volver a intentar.")
+    if (!respuesta.ok) throw new Error("No se pudo reautenticar. Revisa tu contraseña actual y los requisitos de acceso de Supabase.")
+    const datos = await respuesta.json() as SesionReal & { user?: UsuarioAuth }
+    accesoReautenticado = validarSesion(datos).access_token
+    if (datos.user?.id !== identidad) throw new Error("La reautenticación no corresponde a tu cuenta.")
+    if (!sesionReal.esSesionActual(token)) throw new SesionExpirada()
+    const cambio = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      method: "PUT", headers: { apikey: PUBLIC_KEY, Authorization: `Bearer ${accesoReautenticado}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ password: nueva, current_password: actual }), cache: "no-store",
+      signal: AbortSignal.timeout(15000),
+    })
+    if (!cambio.ok) {
+      const error = await cambio.json().catch(() => null) as { code?: string } | null
+      if (cambio.status === 429) throw new Error("Demasiados intentos. Espera antes de volver a intentar.")
+      if (error?.code?.startsWith("reauthentication")) throw new Error("Supabase requiere una verificación adicional. El cambio queda pendiente hasta completar ese mecanismo de Auth; no se modificó la contraseña.")
+      if (error?.code === "same_password") throw new Error("La nueva contraseña debe ser diferente de la actual.")
+      if (error?.code === "weak_password") throw new Error("La nueva contraseña no cumple la política de seguridad de Supabase.")
+      if (cambio.status === 401) throw new Error("La reautenticación expiró. Vuelve a intentarlo.")
+      throw new Error("Supabase no confirmó el cambio. Revisa los requisitos de tu cuenta.")
+    }
+    const cambiado = await cambio.json() as UsuarioAuth
+    if (cambiado.id !== identidad) throw new Error("No se pudo confirmar la identidad de la cuenta actualizada. Vuelve al login.")
+  } finally {
+    // Revocar solo la sesión temporal creada para comprobar la clave actual.
+    if (accesoReautenticado) await fetch(`${SUPABASE_URL}/auth/v1/logout?scope=local`, {
+      method: "POST", headers: { apikey: PUBLIC_KEY, Authorization: `Bearer ${accesoReautenticado}` },
+      cache: "no-store", signal: AbortSignal.timeout(5000),
+    }).catch(() => undefined)
+  }
 }
 
 export type ResumenReal = { total: number; pendientes: number; en_revision: number; cerradas: number }

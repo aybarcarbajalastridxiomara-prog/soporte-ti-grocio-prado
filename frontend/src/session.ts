@@ -49,6 +49,10 @@ export class GestorSesion {
     return this.sesion
   }
 
+  esSesionActual(token: string): boolean {
+    return this.sesion !== null && this.tokens.has(token)
+  }
+
   async obtenerToken(token: string): Promise<string> {
     const sesion = this.validar(token)
     if (Date.now() >= this.vence - 60000) return this.renovar(sesion.access_token)

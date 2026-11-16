@@ -8,7 +8,10 @@ import RealRegister from "./RealRegister"
 import RealTicketDetail from "./RealTicketDetail"
 import RealAdministration from "./RealAdministration"
 import RealDashboard from "./RealDashboard"
-import { Badge, Icon } from "./RealUI"
+import RealAccount from "./RealAccount"
+import RealAssignmentsPage from "./RealAssignmentsPage"
+import RealWork from "./RealWork"
+import { Icon } from "./RealUI"
 
 export type VistaReal = "dashboard" | "incidencias" | "asignaciones" | "atencion" | "usuarios" | "cuenta" | "registro"
 const titulos: Record<VistaReal, string> = {
@@ -34,6 +37,14 @@ export default function RealApp() {
   const [activando, setActivando] = useState(false)
   const [confirmacion, setConfirmacion] = useState("")
   const generacion = useRef(0)
+  const botonMenu = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!menu) return
+    const cerrar = (e: KeyboardEvent) => { if (e.key === "Escape") { setMenu(false); botonMenu.current?.focus() } }
+    window.addEventListener("keydown", cerrar)
+    return () => window.removeEventListener("keydown", cerrar)
+  }, [menu])
 
   function limpiarSesion() {
     generacion.current++
@@ -126,6 +137,11 @@ export default function RealApp() {
 
   function navegar(destino: VistaReal) {
     setVista(destino); setTicketSeleccionado(null); setMensaje(""); setMenu(false)
+    if (menu) window.requestAnimationFrame(() => botonMenu.current?.focus())
+  }
+
+  function abrirTicket(ticket: IncidenciaReal) {
+    setMensaje(""); setTicketSeleccionado(ticket)
   }
 
   async function activarCuenta(evento: FormEvent<HTMLFormElement>) {
@@ -167,6 +183,7 @@ export default function RealApp() {
   const tecnico = ["JEFE", "ASISTENTE", "PRACTICANTE"].includes(perfil.rol)
   const opciones: { vista: VistaReal; icono: string }[] = [
     { vista: "dashboard", icono: "dashboard" }, { vista: "incidencias", icono: "clipboard" },
+    ...(representante ? [{ vista: "registro" as const, icono: "plus" }] : []),
     ...(jefe ? [{ vista: "asignaciones" as const, icono: "users" }] : []),
     ...(tecnico ? [{ vista: "atencion" as const, icono: "tool" }] : []),
     ...(jefe ? [{ vista: "usuarios" as const, icono: "users" }] : []),
@@ -181,25 +198,29 @@ export default function RealApp() {
       <aside id="menu-principal" className={`sidebar${menu ? " open" : ""}`}>
         <div className="brand"><div className="crest">TI</div><div><strong>Soporte TI</strong><span>Grocio Prado</span></div></div>
         <div className="prototype">GESTIÓN DE INCIDENCIAS</div>
-        <nav aria-label="Navegación principal">{opciones.map((opcion) => <button type="button" key={opcion.vista} className={`nav-item${vista === opcion.vista ? " active" : ""}`} aria-current={vista === opcion.vista ? "page" : undefined} onClick={() => navegar(opcion.vista)}><Icon name={opcion.icono} />{titulos[opcion.vista]}</button>)}</nav>
+        <nav aria-label="Navegación principal">{opciones.map((opcion) => <button type="button" key={opcion.vista} className={`nav-item${vista === opcion.vista ? " active" : ""}`} aria-current={vista === opcion.vista ? "page" : undefined} onClick={() => navegar(opcion.vista)}><Icon name={opcion.icono} />{opcion.vista === "incidencias" && representante ? "Mis incidencias" : opcion.vista === "atencion" && !jefe ? "Mis atenciones" : titulos[opcion.vista]}</button>)}</nav>
         <div className="sidebar-bottom"><button className="profile-mini account-trigger" onClick={() => navegar("cuenta")}><div className="avatar">{iniciales}</div><div><b>{perfil.nombre_completo}</b><span>{perfil.rol}</span></div></button><button className="profile-switch" onClick={() => { limpiarSesion(); setCorreo(""); setMensaje("") }}>Cerrar sesión</button></div>
       </aside>
       <section className="content">
         <header className="topbar">
-          <button className="menu-button" aria-label={menu ? "Cerrar menú" : "Abrir menú"} aria-expanded={menu} aria-controls="menu-principal" onClick={() => setMenu(!menu)}>☰</button>
+          <button ref={botonMenu} className="menu-button" aria-label={menu ? "Cerrar menú" : "Abrir menú"} aria-expanded={menu} aria-controls="menu-principal" onClick={() => setMenu(!menu)}>☰</button>
           <div><p className="breadcrumb">Sistema de Gestión de Incidencias / {titulos[vista]}</p><h1>{ticketSeleccionado ? "Detalle de incidencia" : titulos[vista]}</h1></div>
           <div className="top-actions"><span className="connection-label"><i />Acceso institucional</span><button className="avatar avatar-button" aria-label="Abrir mi cuenta" onClick={() => navegar("cuenta")}>{iniciales}</button></div>
         </header>
         <div className="page">
           {mensaje && <div className="notice real-message" role="status">{mensaje}</div>}
           {!vistaPermitida ? <div className="card empty"><h2>Esta sección requiere otro rol</h2><button className="outline" onClick={() => navegar("dashboard")}>Volver al panel</button></div> : vista === "usuarios" && jefe ? <RealAdministration token={sesion.access_token} perfil={perfil} /> : vista === "cuenta" ? (
-            <section className="card real-account"><div className="section-head"><div><h2>Mi cuenta institucional</h2><p>Perfil autorizado por la Municipalidad Distrital de Grocio Prado.</p></div><Badge>{perfil.habilitado ? "Habilitado" : "Deshabilitado"}</Badge></div><dl className="real-profile-grid"><div><dt>Nombre completo</dt><dd>{perfil.nombre_completo}</dd></div><div><dt>Usuario</dt><dd>{perfil.usuario}</dd></div><div><dt>Rol</dt><dd>{perfil.rol}</dd></div><div><dt>Área municipal</dt><dd>{perfil.area_nombre || "Área institucional asignada"}</dd></div></dl><p className="help">Para cambiar tus datos o permisos, contacta a la jefatura de Sistemas.</p><button className="outline" onClick={actualizar} disabled={cargando}>Actualizar perfil</button></section>
+            <RealAccount token={sesion.access_token} perfil={perfil} actualizar={actualizar} cargando={cargando} alCambiarClave={() => { limpiarSesion(); setMensaje("Contraseña actualizada. Inicia sesión con tu nueva contraseña.") }} />
           ) : vista === "registro" && representante ? (
-            <RealRegister token={sesion.access_token} onCancelar={() => navegar("incidencias")} onCreada={async (codigo) => { navegar("incidencias"); setMensaje(`Incidencia ${codigo} registrada correctamente.`); await cargarDatos(sesion.access_token) }} />
+            <RealRegister token={sesion.access_token} perfil={perfil} onCancelar={() => navegar("incidencias")} onCreada={async (codigo) => { navegar("incidencias"); setMensaje(`Incidencia ${codigo} registrada correctamente.`); await cargarDatos(sesion.access_token) }} />
           ) : ticketSeleccionado ? (
             <RealTicketDetail token={sesion.access_token} ticket={ticketSeleccionado} rol={perfil.rol} onVolver={() => { setTicketSeleccionado(null); void actualizar() }} />
+          ) : vista === "asignaciones" ? (
+            <RealAssignmentsPage token={sesion.access_token} incidencias={incidencias} cargando={cargando} actualizado={actualizado} actualizar={() => void actualizar()} abrirDetalle={abrirTicket} />
+          ) : vista === "atencion" ? (
+            <RealWork token={sesion.access_token} abrirDetalle={abrirTicket} />
           ) : (
-            <RealDashboard key={vista} vista={vista} representante={representante} incidencias={incidencias} resumen={resumen} cargando={cargando} actualizado={actualizado} actualizar={() => void actualizar()} navegar={navegar} abrirDetalle={setTicketSeleccionado} />
+            <RealDashboard key={vista} vista={vista} perfil={perfil} incidencias={incidencias} resumen={resumen} cargando={cargando} actualizado={actualizado} actualizar={() => void actualizar()} navegar={navegar} abrirDetalle={abrirTicket} />
           )}
         </div>
       </section>
