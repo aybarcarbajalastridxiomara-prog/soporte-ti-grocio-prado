@@ -3,6 +3,8 @@
 16 de noviembre de 2026, America/Lima. Rama: `ajustes-docente-v4`.
 Commit de base conservado: `e8da34856d724c81f463201f8e4aef631491d742`.
 
+Actualización de validación publicada, 16 de noviembre de 2026: el código revisado en Preview corresponde a `477379ab552185b547dfcc9e58a1acaaf7a7078e`. JEFE y REPRESENTANTE cuentan con revisiones previas de navegación y lectura. Tras la confirmación del operador, se revisaron directamente las cuatro vistas ASISTENTE, sus filtros, teclado y 20 combinaciones responsive, sin escrituras. No existe un perfil PRACTICANTE autorizado entre los tres perfiles públicos actuales. El [informe por roles](112B_VALIDACION_POR_ROLES.md) y el [cierre visual ASISTENTE](112B_CIERRE_VISUAL_ASISTENTE.md) separan esta evidencia de las pruebas funcionales remotas pendientes. No se declara probado un cambio real de contraseña ni el ciclo municipal completo. Esta actualización es exclusivamente documental, sin nueva publicación.
+
 Implementación terminada y revisada localmente. El operador autorizó posteriormente la revisión final, el commit de esta fase y su publicación exclusivamente en Vercel Preview. Este informe describe las pruebas previas a esa publicación. No se ejecutó SQL remoto ni se modificaron cuentas/datos municipales, se repitió la vinculación de 112A, se cambiaron variables configuradas o se desactivó RLS. Las pruebas locales no consultaron ni modificaron los perfiles institucionales existentes.
 
 ## Comportamiento terminado
@@ -115,3 +117,15 @@ Capturas y registros de QA conservados fuera del repositorio y del artefacto pub
 Reproducir build/pruebas desde los directorios indicados, con dependencias existentes. La prueba PostgreSQL acepta como argumento la ruta al módulo oficial PGlite instalado en un directorio temporal; no añade una dependencia a producción ni acepta DATABASE_URL.
 
 Antes del push se comprobó en Vercel que ambos proyectos mantienen `main` como rama de producción y `ajustes-docente-v4` como Preview. La revisión del despliegue será de solo lectura: no se ha acreditado aislamiento de la base de datos, por lo que no se harán registros, cambios de contraseña, invitaciones ni modificaciones de prueba en remoto. No se modificarán variables de entorno ni se promoverá el Preview a producción.
+
+## Correcciones visuales finales locales, 16 de noviembre de 2026
+
+Sobre el SHA publicado `477379ab552185b547dfcc9e58a1acaaf7a7078e`, y con autorización específica, se corrigieron tres diferencias de la revisión ASISTENTE: cabeceras conservadas en listados vacíos exitosos, mensaje No tienes incidencias asignadas separado de errores/filtros, y tarjetas Mis datos/Seguridad de igual altura en escritorio manteniendo el apilado móvil.
+
+Cambios: RealTicketList.tsx, RealWork.tsx, index.css y el nuevo tests/ticket-list.test.mjs; actualización de este informe, del informe por roles y del cierre visual. No se modificó backend, autenticación, consultas, permisos o datos. Ningún commit, push o despliegue adicional.
+
+Resultados repetidos ahora: **15/15 frontend y compilación estándar aprobados; 14/14 backend aisladas y 28/28 controles de preentrega aprobados**. Navegador localhost: 20 combinaciones de cuatro vistas y cinco anchos (1440/1024/768/390/320 px), sin desbordamiento de página ni campos fuera del ancho. Se verificaron foco, filtros, scroll interno, error 503 sin falso vacío y apertura del detalle de un registro en memoria. No se probaron operaciones municipales de escritura.
+
+El [informe de correcciones finales](112B_CIERRE_VISUAL_ASISTENTE.md#correcciones-locales-autorizadas-y-pruebas-de-esta-entrega) contiene archivos, mediciones, límites y plan posterior. Ese plan incorpora observaciones sobre incidencias cerradas y reapertura manual autorizada, sin implementar cambios de estado. Permanecen pendientes el ciclo real, atención por JEFE, perfil PRACTICANTE autorizado, Brevo, adjuntos y administración completa.
+
+La autorización posterior de publicación limitada a Preview se ejecuta conforme al [plan funcional controlado](112B_PLAN_FUNCIONAL_CONTROLADO.md): revisión de archivos, ramas/entornos y despliegue antes y después del push. El plan documenta las rutas existentes de observación y confirma que no existe una reapertura manual independiente en FastAPI. Las afirmaciones anteriores de ausencia de publicación describen la entrega local previa; no autorizan operaciones sobre datos municipales.

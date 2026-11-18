@@ -61,7 +61,7 @@
 .real-app .real-history li{padding:0 0 16px;overflow-wrap:anywhere}
 .real-app .real-history p{font-size:12px;line-height:1.6;margin:5px 0}
 .real-app .real-history small{font-size:10px;color:#65758b}
-.real-app .real-account-grid{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
+.real-app .real-account-grid{grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch}
 .real-app .real-detail .notice{overflow-wrap:anywhere}
 .real-app textarea:focus-visible{outline:3px solid #5b9dd2;outline-offset:3px}
 @media(max-width:900px){
