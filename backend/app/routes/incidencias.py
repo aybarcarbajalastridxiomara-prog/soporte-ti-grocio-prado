@@ -49,6 +49,8 @@ class IncidenciaResumen(BaseModel):
     estado: EstadoIncidencia
     prioridad: str | None
     fecha_registro: datetime
+    prioridad_provisional: str | None = None
+    prioridad_revision_pendiente: bool = False
     area_nombre: str | None = None
     responsable_id: UUID | None = None
     responsable_nombre: str | None = None

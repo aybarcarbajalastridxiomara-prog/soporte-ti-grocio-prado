@@ -4,7 +4,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from app.auth import get_current_user
 from app.db import get_db
 from app.models import Usuario
 from app.v4_esquema import esquema_v4_disponible
+from app.routes.operaciones_ti import asignacion_activa, consultar_ticket, ciclo_actual, observacion_previa
 
 
 router = APIRouter(
@@ -32,6 +33,57 @@ class AsignacionV4Respuesta(BaseModel):
     tecnico_id: UUID
     ciclo_atencion: int
     estado: str
+
+
+class TomaV4Crear(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ciclo_actual: int = Field(gt=1)
+
+
+class TomaV4Respuesta(AsignacionV4Respuesta):
+    origen_asignacion: str = "AUTOTOMA"
+
+
+@router.post("/{incidencia_id}/tomar", response_model=TomaV4Respuesta, status_code=status.HTTP_201_CREATED)
+def tomar_incidencia_reabierta(incidencia_id: UUID, datos: TomaV4Crear,
+        usuario_actual: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
+    if usuario_actual.rol not in {"JEFE", "ASISTENTE", "PRACTICANTE"}:
+        raise HTTPException(403, "Solo personal TI autorizado puede tomar incidencias.")
+    try:
+        if not esquema_v4_disponible(db):
+            raise HTTPException(503, "Esquema V4 no habilitado.")
+        ticket = consultar_ticket(db, incidencia_id, usuario_actual, bloquear=True)
+        db.refresh(usuario_actual)
+        if not usuario_actual.habilitado or usuario_actual.rol not in {"JEFE", "ASISTENTE", "PRACTICANTE"}:
+            raise HTTPException(403, "Perfil sin autorización vigente.")
+        ciclo = ciclo_actual(db, incidencia_id, True)
+        if ciclo <= 1 or ciclo != datos.ciclo_actual:
+            raise HTTPException(409, "El ciclo cambió o requiere la toma original. Actualiza la incidencia.")
+        if ticket.estado != "En revisión":
+            raise HTTPException(409, "Solo puede tomarse un ciclo reabierto en revisión.")
+        if not observacion_previa(db, incidencia_id, ciclo):
+            raise HTTPException(409, "No existe observación que justifique el ciclo.")
+        if asignacion_activa(db, incidencia_id) is not None:
+            raise HTTPException(409, "La incidencia ya tiene responsable activo.")
+        nueva = db.execute(text("""INSERT INTO public.asignaciones
+            (incidencia_id, tecnico_id, asignado_por_id, origen_asignacion, ciclo_atencion)
+            VALUES (:id, :actor, :actor, 'AUTOTOMA', :ciclo) RETURNING id"""),
+            {"id": incidencia_id, "actor": usuario_actual.id, "ciclo": ciclo}).scalar_one()
+        db.execute(text("""INSERT INTO public.historial_incidencias
+            (incidencia_id, usuario_id, accion, descripcion, ciclo_atencion)
+            VALUES (:id, :actor, 'AUTOTOMA', :descripcion, :ciclo)"""),
+            {"id": incidencia_id, "actor": usuario_actual.id, "ciclo": ciclo,
+             "descripcion": f"Autotoma autorizada para atención propia del ciclo {ciclo}."})
+        salida = TomaV4Respuesta(asignacion_id=nueva, incidencia_id=incidencia_id,
+            tecnico_id=usuario_actual.id, ciclo_atencion=ciclo, estado=ticket.estado)
+        db.commit()
+        return salida
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(409, "La incidencia ya fue tomada o asignada. Actualiza el listado.") from error
+    except Exception:
+        db.rollback()
+        raise
 
 
 @router.post(

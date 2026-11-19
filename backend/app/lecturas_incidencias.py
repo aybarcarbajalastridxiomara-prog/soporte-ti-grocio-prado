@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Area, Asignacion, Incidencia, Usuario
 from app.v4_esquema import esquema_v4_disponible
+from app.prioridades import ultimos_eventos
 
 
 def condicion_ciclo(db: Session):
@@ -17,6 +18,11 @@ def enriquecer_incidencias(db: Session, incidencias: list[Incidencia], ciclo) ->
     if not incidencias:
         return []
     ids = [i.id for i in incidencias]
+    ciclos = {i.id: 1 for i in incidencias}
+    if not ciclo.compare(true()):
+        ciclos = dict(db.execute(select(Incidencia.id, literal_column("incidencias.ciclo_actual"))
+            .where(Incidencia.id.in_(ids))).all())
+    prioridades = ultimos_eventos(db, ciclos)
     areas = {a.id: a.nombre for a in db.scalars(select(Area).where(Area.id.in_({i.area_id for i in incidencias})))}
     activas = db.scalars(
         select(Asignacion).join(Incidencia, Incidencia.id == Asignacion.incidencia_id)
@@ -30,11 +36,14 @@ def enriquecer_incidencias(db: Session, incidencias: list[Incidencia], ciclo) ->
     nombres = {u.id: u.nombre_completo for u in db.scalars(select(Usuario).where(Usuario.id.in_(personas)))} if personas else {}
     salida = []
     for i in incidencias:
+        ultimo = prioridades.get(i.id)
+        provisional = ultimo[1].nueva if ultimo and ultimo[1].provisional and i.prioridad is None else None
         tipo = "cierre" if i.estado == "Cerrado" else "activo" if i.id in responsables else "sin_asignar"
         responsable = i.cerrado_por_usuario_id if tipo == "cierre" else responsables.get(i.id)
         salida.append(dict(
             id=i.id, codigo=i.codigo, area_id=i.area_id, area_nombre=areas.get(i.area_id),
             asunto=i.asunto, estado=i.estado, prioridad=i.prioridad, fecha_registro=i.fecha_registro,
+            prioridad_provisional=provisional, prioridad_revision_pendiente=provisional is not None,
             responsable_id=responsable, responsable_nombre=nombres.get(responsable), responsable_tipo=tipo,
         ))
     return salida

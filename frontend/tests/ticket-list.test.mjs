@@ -53,3 +53,12 @@ test("una lista poblada conserva los datos de la consulta y acceso al detalle, s
   assert.doesNotMatch(html, new RegExp(propias))
   assert.doesNotMatch(html, /Todavía no hay incidencias/)
 })
+
+test("prioridad provisional se identifica y no se presenta como confirmación oficial", () => {
+  const html = render({ incidencias: [{ id: "registro-aislado", codigo: "QA-LOCAL", asunto: "Propuesta aislada",
+    fecha_registro: "2026-11-18T10:00:00Z", estado: "En revisión", prioridad: null,
+    prioridad_provisional: "Alta", prioridad_revision_pendiente: true, responsable_tipo: "activo",
+  }] })
+  assert.match(html, /Alta/)
+  assert.match(html, /Provisional · revisión JEFE/)
+})

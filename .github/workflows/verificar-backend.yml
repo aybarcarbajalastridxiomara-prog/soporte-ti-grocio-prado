@@ -29,9 +29,12 @@ jobs:
    
       - name: Instalar dependencias
         run: |
-          python -m pip install -r backend/requirements.txt
-          python -m pip install "httpx>=0.28,<1.0"
+          python -m pip install -r backend/requirements-test.txt
           
+
+      - name: Probar regresiones y exportadores locales
+        working-directory: backend
+        run: python -m unittest discover -s tests -v
 
       - name: Verificar sintaxis Python
         run: |
@@ -1806,7 +1809,8 @@ jobs:
                       409,
                   )
 
-                  # Jefe, asistente y practicante autorizados.
+                  # Borrador técnico: conservar participación autorizada.
+                  # El módulo /api/reportes exige JEFE independientemente.
                   for rol in (
                       "JEFE",
                       "ASISTENTE",

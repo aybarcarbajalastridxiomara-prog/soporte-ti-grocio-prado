@@ -16,14 +16,14 @@ export default function RealTicketList({ incidencias, cargando, disponible, actu
   const [busqueda, setBusqueda] = useState("")
   const [estado, setEstado] = useState("Todos")
   const filtradas = incidencias.filter(t => (estado === "Todos" || estado === t.estado) &&
-    `${t.codigo} ${t.asunto} ${t.area_nombre || ""} ${t.prioridad || ""} ${t.responsable_nombre || ""}`.toLocaleLowerCase("es").includes(busqueda.trim().toLocaleLowerCase("es")))
+    `${t.codigo} ${t.asunto} ${t.area_nombre || ""} ${t.prioridad || t.prioridad_provisional || ""} ${t.responsable_nombre || ""}`.toLocaleLowerCase("es").includes(busqueda.trim().toLocaleLowerCase("es")))
   const visibles = limiteVisible ? filtradas.slice(0, limiteVisible) : filtradas
   return <section className="card table-card" aria-busy={cargando}>
     <div className="section-head"><div><h3>{titulo}</h3><p>{descripcion || "Últimos 50 registros autorizados"}{actualizado && ` · Actualizado a las ${actualizado}`}</p></div>{accion}</div>
     <div className="filters real-filters"><label className="search"><Icon name="search" /><input aria-label="Buscar en los registros cargados" placeholder="Buscar código, asunto, área o responsable…" value={busqueda} onChange={e => setBusqueda(e.target.value)} /></label><select aria-label="Filtrar por estado" value={estado} onChange={e => setEstado(e.target.value)}><option value="Todos">Todos los estados</option><option>Pendiente</option><option>En revisión</option><option>Cerrado</option></select></div>
     {!disponible ? <div className="empty" role="status"><Icon name="clipboard" /><h3>{cargando ? "Consultando incidencias…" : "Listado no disponible"}</h3><p>{cargando ? "Obteniendo los registros autorizados para tu perfil." : "Actualiza para reintentar la consulta."}</p></div> : <><div className="table-wrap" tabIndex={0} role="region" aria-label={titulo}>
       <table className="real-ticket-table"><thead><tr>{["Código", "Asunto", "Área", "Registro", "Prioridad", "Estado", "Responsable", "Acciones"].map(t => <th scope="col" key={t}>{t}</th>)}</tr></thead><tbody>{visibles.map(ticket => <tr key={ticket.id}>
-        <td><b className="code">{ticket.codigo}</b></td><td title={ticket.asunto}>{ticket.asunto}</td><td>{ticket.area_nombre || "Área no disponible"}</td><td>{fechaRegistro(ticket.fecha_registro)}</td><td><Badge>{ticket.prioridad || "Sin definir"}</Badge></td><td><Badge>{ticket.estado}</Badge></td>
+        <td><b className="code">{ticket.codigo}</b></td><td title={ticket.asunto}>{ticket.asunto}</td><td>{ticket.area_nombre || "Área no disponible"}</td><td>{fechaRegistro(ticket.fecha_registro)}</td><td><Badge>{ticket.prioridad || ticket.prioridad_provisional || "Sin definir"}</Badge>{!ticket.prioridad && ticket.prioridad_revision_pendiente && <small className="cell-caption">Provisional · revisión JEFE</small>}</td><td><Badge>{ticket.estado}</Badge></td>
         <td>{ticket.responsable_nombre || (ticket.responsable_tipo === "sin_asignar" ? "Sin asignar" : "No disponible")}{ticket.responsable_tipo === "cierre" && <small className="cell-caption">Cerrado por</small>}</td>
         <td><button className="row-action" aria-label={`Ver detalle de ${ticket.codigo}`} onClick={() => abrirDetalle(ticket)}>Ver<Icon name="arrow" /></button></td>
       </tr>)}</tbody></table>

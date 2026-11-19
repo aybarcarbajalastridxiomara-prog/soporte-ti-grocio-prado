@@ -78,16 +78,10 @@ def preparar_informe_tecnico(
 ):
     """Recopila informacion del ticket y sus atenciones."""
 
-    roles_validos = {
-        "JEFE",
-        "ASISTENTE",
-        "PRACTICANTE",
-    }
-
-    if usuario_actual.rol not in roles_validos:
+    if usuario_actual.rol not in {"JEFE", "ASISTENTE", "PRACTICANTE"}:
         raise HTTPException(
             status_code=403,
-            detail="No tiene permiso para consultar informes.",
+            detail="No tiene permiso para consultar informes técnicos.",
         )
 
     incidencia = db.get(Incidencia, incidencia_id)
@@ -98,23 +92,15 @@ def preparar_informe_tecnico(
             detail="Incidencia no encontrada.",
         )
 
-    # El jefe puede consultar cualquier ticket.
-    # El personal tecnico debe haber sido responsable.
-    if usuario_actual.rol in {"ASISTENTE", "PRACTICANTE"}:
-        asignacion_id = db.scalar(
-            select(Asignacion.id)
-            .where(
-                Asignacion.incidencia_id == incidencia_id,
-                Asignacion.tecnico_id == usuario_actual.id,
-            )
-            .limit(1)
-        )
-
-        if asignacion_id is None:
-            raise HTTPException(
-                status_code=403,
-                detail="No participo en la atencion del ticket.",
-            )
+    # Conservar el permiso técnico anterior, incluso con asignación finalizada.
+    # No concede acceso a /api/reportes ni a sus exportaciones institucionales.
+    if usuario_actual.rol != "JEFE":
+        participo = db.scalar(select(Asignacion.id).where(
+            Asignacion.incidencia_id == incidencia_id,
+            Asignacion.tecnico_id == usuario_actual.id,
+        ).limit(1))
+        if participo is None:
+            raise HTTPException(403, "No participó en la atención del ticket.")
 
     consulta = (
         select(Intervencion)

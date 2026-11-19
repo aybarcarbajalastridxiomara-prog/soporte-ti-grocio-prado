@@ -11,6 +11,8 @@ export function Icon({ name }: { name: string }) {
     check: "m5 12 4 4L19 6",
     clock: "M12 6v6l4 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0",
     refresh: "M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 14 6M4 12a8 8 0 0 0 14 6",
+    reports: "M4 3h16v18H4zM8 15v3M12 11v7M16 7v11",
+    download: "M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4",
   }
   return <svg className="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={paths[name] || paths.clipboard} /></svg>
 }

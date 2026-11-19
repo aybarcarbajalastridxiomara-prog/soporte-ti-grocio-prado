@@ -62,8 +62,37 @@
 .real-app .real-history p{font-size:12px;line-height:1.6;margin:5px 0}
 .real-app .real-history small{font-size:10px;color:#65758b}
 .real-app .real-account-grid{grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch}
+.real-app .real-operation{min-width:0;overflow-wrap:anywhere}
+.real-app .real-operation fieldset{border:0;padding:0;margin:0;display:grid;gap:16px;min-width:0}
+.real-app .real-operation .notice{margin:12px 0}
 .real-app .real-detail .notice{overflow-wrap:anywhere}
 .real-app textarea:focus-visible{outline:3px solid #5b9dd2;outline-offset:3px}
+.real-app .real-reports{min-width:0}
+.real-app .real-reports .page-title-row{flex-wrap:wrap}
+.real-app .report-filter-card{margin-bottom:22px}
+.real-app .report-filters{border:0;padding:0;margin:0;min-width:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.real-app .report-filters label{display:grid;gap:7px;font-size:11px;font-weight:500;color:#526879;min-width:0}
+.real-app .report-filters input,.real-app .report-filters select{width:100%;min-width:0;max-width:100%;height:44px;margin:0;padding:0 12px;border:1px solid #aebfd0;border-radius:8px;background:#fff;box-shadow:none;font:inherit;color:#344f66}
+.real-app .report-filters input:focus-visible,.real-app .report-filters select:focus-visible,.real-app .report-pagination select:focus-visible{outline:3px solid #1764a6;outline-offset:3px}
+.real-app .report-filter-actions{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:20px}
+.real-app .report-filter-actions .help{line-height:1.6}
+.real-app .report-scope{font-size:11px;color:#65758b;line-height:1.7;margin:0 0 12px;overflow-wrap:anywhere}
+.real-app .report-applied{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px}
+.real-app .report-applied>span{max-width:100%;overflow-wrap:anywhere;background:#eaf3fa;color:#34536a;border-radius:6px;padding:7px 10px;font-size:10px;line-height:1.5}
+.real-app .report-breakdowns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;margin-bottom:22px}
+.real-app .report-breakdown ul{padding:0;margin:16px 0 0;list-style:none;max-height:230px;overflow:auto}
+.real-app .report-breakdown li{margin:0 0 14px;padding-right:5px}
+.real-app .report-breakdown li>div:first-child{display:flex;gap:10px;justify-content:space-between;font-size:11px;margin-bottom:7px}
+.real-app .report-breakdown li span{overflow-wrap:anywhere}
+.real-app .report-bar{height:5px;background:#edf2f6;border-radius:4px;overflow:hidden}
+.real-app .report-bar span{display:block;background:#4384bb;height:100%;border-radius:4px}
+.real-app .report-pagination{gap:15px;flex-wrap:wrap}
+.real-app .report-pagination label{display:flex;align-items:center;gap:8px}
+.real-app .report-pagination select{width:68px;margin:0;padding:6px;border:1px solid #aebfd0;border-radius:8px;background:#fff}
+.real-app .real-reports>.notice,.real-app .real-reports>.auth-error{margin-bottom:18px}
+.real-app .visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+@media(max-width:1100px){.real-app .report-breakdowns{grid-template-columns:minmax(0,1fr)}.real-app .report-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.real-app .report-filters{grid-template-columns:minmax(0,1fr)}.real-app .report-filter-actions{align-items:stretch;flex-direction:column}.real-app .report-filter-actions .real-actions>button{flex:1}.real-app .report-pagination>.real-actions{width:100%;justify-content:flex-start;gap:10px}}
 @media(max-width:900px){
   .real-app .sidebar{visibility:hidden}
   .real-app .sidebar.open{visibility:visible}

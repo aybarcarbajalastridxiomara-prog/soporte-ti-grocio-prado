@@ -11,12 +11,14 @@ import RealDashboard from "./RealDashboard"
 import RealAccount from "./RealAccount"
 import RealAssignmentsPage from "./RealAssignmentsPage"
 import RealWork from "./RealWork"
+import RealReports from "./RealReports"
 import { Icon } from "./RealUI"
 
-export type VistaReal = "dashboard" | "incidencias" | "asignaciones" | "atencion" | "usuarios" | "cuenta" | "registro"
+export type VistaReal = "dashboard" | "incidencias" | "asignaciones" | "atencion" | "usuarios" | "cuenta" | "registro" | "reportes"
 const titulos: Record<VistaReal, string> = {
   dashboard: "Panel principal", incidencias: "Incidencias", asignaciones: "Asignaciones",
   atencion: "Atención técnica", usuarios: "Usuarios y áreas", cuenta: "Mi cuenta", registro: "Registrar incidencia",
+  reportes: "Reportes",
 }
 const errorTexto = (error: unknown) => error instanceof Error ? error.message : "No se pudo completar la consulta."
 
@@ -187,9 +189,10 @@ export default function RealApp() {
     ...(jefe ? [{ vista: "asignaciones" as const, icono: "users" }] : []),
     ...(tecnico ? [{ vista: "atencion" as const, icono: "tool" }] : []),
     ...(jefe ? [{ vista: "usuarios" as const, icono: "users" }] : []),
+    ...(jefe ? [{ vista: "reportes" as const, icono: "reports" }] : []),
     { vista: "cuenta", icono: "user" },
   ]
-  const vistaPermitida = (vista !== "usuarios" && vista !== "asignaciones" || jefe) && (vista !== "atencion" || tecnico) && (vista !== "registro" || representante)
+  const vistaPermitida = (!["usuarios", "asignaciones", "reportes"].includes(vista) || jefe) && (vista !== "atencion" || tecnico) && (vista !== "registro" || representante)
   const iniciales = perfil.nombre_completo.split(" ").filter(Boolean).map((x) => x[0]).slice(0, 2).join("")
 
   return (
@@ -215,6 +218,8 @@ export default function RealApp() {
             <RealRegister token={sesion.access_token} perfil={perfil} onCancelar={() => navegar("incidencias")} onCreada={async (codigo) => { navegar("incidencias"); setMensaje(`Incidencia ${codigo} registrada correctamente.`); await cargarDatos(sesion.access_token) }} />
           ) : ticketSeleccionado ? (
             <RealTicketDetail token={sesion.access_token} ticket={ticketSeleccionado} rol={perfil.rol} onVolver={() => { setTicketSeleccionado(null); void actualizar() }} />
+          ) : vista === "reportes" && jefe ? (
+            <RealReports token={sesion.access_token} abrirDetalle={abrirTicket} />
           ) : vista === "asignaciones" ? (
             <RealAssignmentsPage token={sesion.access_token} incidencias={incidencias} cargando={cargando} actualizado={actualizado} actualizar={() => void actualizar()} abrirDetalle={abrirTicket} />
           ) : vista === "atencion" ? (

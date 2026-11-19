@@ -40,6 +40,8 @@ export type IncidenciaReal = {
   asunto: string
   estado: "Pendiente" | "En revisión" | "Cerrado"
   prioridad: string | null
+  prioridad_provisional?: string | null
+  prioridad_revision_pendiente?: boolean
   fecha_registro: string
   area_nombre?: string | null
   responsable_id?: string | null
@@ -148,11 +150,11 @@ export async function iniciarSesionReal(
   return sesion
 }
 
-export async function solicitarAPI<T>(
+async function solicitarRespuesta(
   ruta: string,
   token: string,
   opciones: RequestInit = {},
-): Promise<T> {
+): Promise<Response> {
   if (!API_URL) {
     throw new Error("Falta configurar la URL del backend.")
   }
@@ -201,7 +203,23 @@ export async function solicitarAPI<T>(
     )
   }
 
-  return await respuesta.json() as T
+  return respuesta
+}
+
+export async function solicitarAPI<T>(ruta: string, token: string, opciones: RequestInit = {}): Promise<T> {
+  return await (await solicitarRespuesta(ruta, token, opciones)).json() as T
+}
+
+export async function solicitarArchivoReporte(ruta: string, token: string, formato: "pdf" | "xlsx", signal?: AbortSignal): Promise<Blob> {
+  if (!ruta.startsWith("/api/reportes/incidencias/exportar?")) throw new Error("Ruta de descarga no permitida.")
+  const respuesta = await solicitarRespuesta(ruta, token, { signal: signal ?? AbortSignal.timeout(60000), redirect: "error" })
+  const esperado = formato === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  if (respuesta.headers.get("Content-Type")?.split(";")[0].trim() !== esperado) {
+    throw new Error("El servidor no devolvió el formato solicitado.")
+  }
+  const archivo = await respuesta.blob()
+  if (!archivo.size || archivo.size > 4_000_000) throw new Error("El archivo recibido está vacío o supera el tamaño permitido.")
+  return archivo
 }
 
 export function consultarPerfilReal(token: string) {

@@ -9,6 +9,10 @@ import { solicitarAPI, type IncidenciaReal, type Rol } from "./api"
 import RealAssignment from "./RealAssignment"
 import RealTechnicalActions from "./RealTechnicalActions"
 import RealVerification from "./RealVerification"
+import RealTake from "./RealTake"
+import RealPriority from "./RealPriority"
+import RealTechnicalReport from "./RealTechnicalReport"
+import { descripcionPrioridad } from "./tiOperations"
 
 type Props = {
   token: string
@@ -50,7 +54,7 @@ type Intervencion = {
   ciclo_atencion?: number
 }
 
-type Seccion = "resumen" | "atenciones" | "historial"
+type Seccion = "resumen" | "atenciones" | "historial" | "informe"
 
 const usarCiclosV4 = import.meta.env.VITE_CONSULTA_CICLOS_V4 === "true"
 
@@ -138,6 +142,7 @@ export default function RealTicketDetail({ token, ticket, rol, onVolver }: Props
     { id: "resumen", nombre: "Resumen" },
     { id: "atenciones", nombre: "Atenciones", cantidad: intervenciones.length },
     { id: "historial", nombre: "Historial", cantidad: eventos.length },
+    ...(rol && ["JEFE", "ASISTENTE", "PRACTICANTE"].includes(rol) ? [{ id: "informe" as const, nombre: "Informe técnico" }] : []),
   ]
 
   return (
@@ -172,7 +177,7 @@ export default function RealTicketDetail({ token, ticket, rol, onVolver }: Props
           </span>
         </div>
         <p style={{ color: "#65758b", fontSize: 13, margin: 0 }}>
-          Consulta de la incidencia y sus actuaciones. Solo el jefe puede registrar una asignación si el entorno lo autoriza.
+          Consulta de la incidencia y sus actuaciones. Las acciones disponibles corresponden a tus permisos y al ciclo vigente.
         </p>
       </header>
 
@@ -182,6 +187,9 @@ export default function RealTicketDetail({ token, ticket, rol, onVolver }: Props
         </p>
       )}
 
+      {rol && !cargando && detalle && <RealPriority token={token} ticketId={ticket.id} rol={rol} onActualizada={() => setRecarga(n => n + 1)} />}
+      {rol && ["JEFE", "ASISTENTE", "PRACTICANTE"].includes(rol) && !cargando && detalle && detalle.estado !== "Cerrado" &&
+        <RealTake token={token} ticketId={ticket.id} onActualizada={() => setRecarga(n => n + 1)} />}
       {rol === "JEFE" && !cargando && detalle && (
         <RealAssignment
           token={token}
@@ -244,6 +252,7 @@ export default function RealTicketDetail({ token, ticket, rol, onVolver }: Props
         </div>
       )}
       {cargando && <div style={panel} role="status">Consultando información de la incidencia...</div>}
+      {!cargando && detalle && seccion === "informe" && rol && ["JEFE", "ASISTENTE", "PRACTICANTE"].includes(rol) && <RealTechnicalReport token={token} ticketId={ticket.id} />}
 
       {!cargando && detalle && seccion === "resumen" && (
         <section style={{ ...panel, display: "grid", gap: 22 }}>
@@ -299,7 +308,7 @@ export default function RealTicketDetail({ token, ticket, rol, onVolver }: Props
                 <span style={{ fontSize: 12, color: "#64748b" }}>{fecha(evento.fecha_registro)}</span>
               </div>
               <p style={{ margin: 0, color: "#405168", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
-                {evento.descripcion}
+                {descripcionPrioridad(evento.accion, evento.descripcion)}
               </p>
             </article>
           ))}
