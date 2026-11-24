@@ -16,7 +16,8 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.db import get_db
-from app.lecturas_incidencias import condicion_ciclo, enriquecer_incidencias
+from app.lecturas_incidencias import (condicion_ciclo, condicion_visibilidad,
+    enriquecer_incidencias, exigir_lectura_tecnica)
 from app.models import (
     Asignacion,
     HistorialIncidencia,
@@ -155,7 +156,7 @@ def listar_incidencias(
     if mis_atenciones and usuario_actual.rol == "REPRESENTANTE":
         raise HTTPException(403, "Solo personal TI puede consultar sus atenciones.")
     ciclo = condicion_ciclo(db) if mis_atenciones else None
-    consulta = select(Incidencia)
+    consulta = select(Incidencia).where(condicion_visibilidad(usuario_actual))
 
     if mis_atenciones:
         propia = select(Asignacion.id).where(
@@ -334,8 +335,7 @@ def consultar_resumen_general(
         func.count().filter(Incidencia.estado == "En revisión").label("en_revision"),
         func.count().filter(Incidencia.estado == "Cerrado").label("cerradas"),
     ).select_from(Incidencia)
-    if usuario_actual.rol == "REPRESENTANTE":
-        consulta = consulta.where(Incidencia.area_id == usuario_actual.area_id)
+    consulta = consulta.where(condicion_visibilidad(usuario_actual))
     return dict(db.execute(consulta).mappings().one())
 
 
@@ -380,6 +380,7 @@ def consultar_detalle_incidencia(
                 detail="Incidencia no encontrada.",
             )
 
+    exigir_lectura_tecnica(db, incidencia_id, usuario_actual)
     return incidencia
 
 
@@ -394,6 +395,7 @@ def consultar_historial_incidencia(
     db: Session = Depends(get_db),
 ):
     """Consulta las acciones registradas sobre una incidencia."""
+    exigir_lectura_tecnica(db, incidencia_id, usuario_actual)
 
     roles_validos = {
         "JEFE",

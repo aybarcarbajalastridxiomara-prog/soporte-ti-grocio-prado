@@ -12,6 +12,7 @@ import RealVerification from "./RealVerification"
 import RealTake from "./RealTake"
 import RealPriority from "./RealPriority"
 import RealTechnicalReport from "./RealTechnicalReport"
+import RealAttachments from "./RealAttachments"
 import { descripcionPrioridad } from "./tiOperations"
 
 type Props = {
@@ -298,13 +299,15 @@ export default function RealTicketDetail({ token, ticket, rol, onVolver }: Props
         </section>
       )}
 
+      {!cargando && detalle && seccion === "resumen" && <RealAttachments token={token} ticketId={ticket.id} />}
+
       {!cargando && detalle && seccion === "historial" && (
         <section style={{ display: "grid", gap: 12 }}>
           {eventos.length === 0 && <div style={panel}>Todavía no hay eventos en el historial.</div>}
           {eventos.map((evento) => (
             <article key={evento.id} style={{ ...panel, display: "grid", gap: 7 }}>
               <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 8 }}>
-                <strong style={{ color: "#182b46" }}>{evento.accion}</strong>
+                <strong style={{ color: "#182b46" }}>{evento.accion === "CIERRE_PRESERVADO" ? "Cierre anterior conservado" : evento.accion}</strong>
                 <span style={{ fontSize: 12, color: "#64748b" }}>{fecha(evento.fecha_registro)}</span>
               </div>
               <p style={{ margin: 0, color: "#405168", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>

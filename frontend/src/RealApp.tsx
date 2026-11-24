@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react"
 import {
   iniciarSesionReal, consultarPerfilReal, listarIncidenciasReales, consultarResumenReal, sesionReal,
-  recibirInvitacionReal, establecerClaveInvitada,
+  recibirEnlaceAuthReal, establecerClaveInvitada, consultarUsuarioAuth,
+  solicitarRecuperacionReal, completarRecuperacionReal, recuperacionHabilitada, cerrarSesionReal,
   type PerfilReal, type IncidenciaReal, type SesionReal, type ResumenReal,
 } from "./api"
 import RealRegister from "./RealRegister"
@@ -38,6 +39,9 @@ export default function RealApp() {
   const [actualizado, setActualizado] = useState("")
   const [activando, setActivando] = useState(false)
   const [confirmacion, setConfirmacion] = useState("")
+  const [recuperando, setRecuperando] = useState(false)
+  const [solicitandoEnlace, setSolicitandoEnlace] = useState(false)
+  const [identidadRecuperacion, setIdentidadRecuperacion] = useState("")
   const generacion = useRef(0)
   const botonMenu = useRef<HTMLButtonElement>(null)
 
@@ -55,6 +59,16 @@ export default function RealApp() {
     setTicketSeleccionado(null); setVista("dashboard"); setMenu(false)
     setContrasena(""); setMostrarClave(false); setCargando(false); setActualizado("")
     setActivando(false); setConfirmacion("")
+    setRecuperando(false); setIdentidadRecuperacion("")
+  }
+
+  async function salir() {
+    if(cargando) return
+    const token=sesion?.access_token
+    setCargando(true)
+    let aviso=""
+    if(token) try { await cerrarSesionReal(token) } catch(error) { aviso=errorTexto(error) }
+    limpiarSesion();setCorreo("");setMensaje(aviso)
   }
 
   useEffect(() => {
@@ -67,8 +81,15 @@ export default function RealApp() {
 
   useEffect(() => {
     try {
-      const invitacion = recibirInvitacionReal()
-      if (!invitacion) return
+      const enlace = recibirEnlaceAuthReal()
+      if (!enlace) return
+      const invitacion = enlace.sesion
+      if (enlace.tipo === "recovery") {
+        setRecuperando(true); setSesion(invitacion); setCargando(true)
+        void consultarUsuarioAuth(invitacion.access_token).then(usuario => setIdentidadRecuperacion(usuario.id))
+          .catch(error => { limpiarSesion(); setMensaje(errorTexto(error)) }).finally(() => setCargando(false))
+        return
+      }
       setActivando(true); setCargando(true)
       const vigente = generacion.current
       void consultarPerfilReal(invitacion.access_token).then((autorizado) => {
@@ -162,6 +183,22 @@ export default function RealApp() {
     finally { setCargando(false) }
   }
 
+  async function recuperarClave(evento: FormEvent<HTMLFormElement>) {
+    evento.preventDefault()
+    if (cargando || !sesion || !identidadRecuperacion) return
+    if (contrasena !== confirmacion) { setMensaje("Las contraseñas deben coincidir."); return }
+    setCargando(true); setMensaje("")
+    try {
+      await completarRecuperacionReal(sesion.access_token, identidadRecuperacion, contrasena)
+      limpiarSesion(); setMensaje("Auth confirmó la contraseña nueva. Inicia sesión nuevamente.")
+    } catch (error) { setMensaje(errorTexto(error)) }
+    finally { setContrasena(""); setConfirmacion(""); setCargando(false) }
+  }
+
+  if (recuperando) return <main className="login-screen real-app"><section className="login-panel"><h2>Restablecer contraseña</h2><p>Se actualizará únicamente tu cuenta existente mediante Supabase Auth.</p><form onSubmit={recuperarClave}><label>Nueva contraseña<input type="password" autoComplete="new-password" minLength={12} required value={contrasena} disabled={cargando} onChange={e => setContrasena(e.target.value)} /></label><label>Confirmar contraseña<input type="password" autoComplete="new-password" minLength={12} required value={confirmacion} disabled={cargando} onChange={e => setConfirmacion(e.target.value)} /></label>{mensaje && <p role="alert" className="auth-error">{mensaje}</p>}<button className="primary" disabled={cargando || !identidadRecuperacion}>Guardar contraseña nueva</button><button type="button" className="outline" disabled={cargando} onClick={() => { limpiarSesion(); setMensaje("") }}>Volver al login</button></form></section></main>
+
+  if (solicitandoEnlace && !sesion) return <main className="login-screen real-app"><section className="login-panel"><h2>Recuperar acceso</h2><p>Supabase Auth gestiona el enlace de recuperación; no se crean cuentas ni se modifican roles.</p>{!recuperacionHabilitada && <p role="status">El envío está deshabilitado hasta que el operador valide el correo y las redirecciones de Auth. Contacta a la jefatura.</p>}<form onSubmit={async e => { e.preventDefault(); if(cargando) return; setCargando(true); setMensaje(""); try { setMensaje(await solicitarRecuperacionReal(correo)) } catch(error) { setMensaje(errorTexto(error)) } finally { setCargando(false) } }}><label>Correo electrónico<input type="email" autoComplete="username" required value={correo} disabled={cargando} onChange={e => setCorreo(e.target.value)} /></label>{mensaje && <p role="status">{mensaje}</p>}<button className="primary" disabled={cargando || !recuperacionHabilitada}>Solicitar enlace</button><button type="button" className="outline" disabled={cargando} onClick={() => { setSolicitandoEnlace(false); setMensaje("") }}>Volver al login</button></form></section></main>
+
   if (activando) return <main className="login-screen real-app"><section className="login-panel"><div className="login-copy"><h2>Activa tu cuenta institucional</h2><p>Establece una contraseña para acceder con tu correo.</p></div><form onSubmit={activarCuenta}><label>Nueva contraseña<input type="password" autoComplete="new-password" required minLength={12} value={contrasena} onChange={(e) => setContrasena(e.target.value)} disabled={cargando} /></label><label>Confirmar contraseña<input type="password" autoComplete="new-password" required minLength={12} value={confirmacion} onChange={(e) => setConfirmacion(e.target.value)} disabled={cargando} /></label>{mensaje && <div className="auth-error" role="alert">{mensaje}</div>}<button className="primary login-submit" disabled={cargando || !perfil}>{cargando ? "Verificando…" : "Activar cuenta"}</button><button type="button" className="outline" disabled={cargando} onClick={() => { limpiarSesion(); setMensaje("") }}>Volver al login</button></form></section></main>
 
   if (!sesion || !perfil) return (
@@ -175,6 +212,8 @@ export default function RealApp() {
           {mensaje && <div className="auth-error" role="alert">{mensaje}</div>}
           <button type="submit" className="primary login-submit" disabled={cargando}>{cargando ? "Verificando acceso…" : "Iniciar sesión"}</button>
         </form>
+        <button type="button" className="outline" onClick={() => { setSolicitandoEnlace(true); setMensaje("") }}>Olvidé mi contraseña</button>
+        {!recuperacionHabilitada && <p className="help">Recuperación por correo pendiente de configurar y validar con el operador.</p>}
         <p className="login-foot">Municipalidad Distrital de Grocio Prado · Acceso institucional</p>
       </section>
     </main>
@@ -202,7 +241,7 @@ export default function RealApp() {
         <div className="brand"><div className="crest">TI</div><div><strong>Soporte TI</strong><span>Grocio Prado</span></div></div>
         <div className="prototype">GESTIÓN DE INCIDENCIAS</div>
         <nav aria-label="Navegación principal">{opciones.map((opcion) => <button type="button" key={opcion.vista} className={`nav-item${vista === opcion.vista ? " active" : ""}`} aria-current={vista === opcion.vista ? "page" : undefined} onClick={() => navegar(opcion.vista)}><Icon name={opcion.icono} />{opcion.vista === "incidencias" && representante ? "Mis incidencias" : opcion.vista === "atencion" && !jefe ? "Mis atenciones" : titulos[opcion.vista]}</button>)}</nav>
-        <div className="sidebar-bottom"><button className="profile-mini account-trigger" onClick={() => navegar("cuenta")}><div className="avatar">{iniciales}</div><div><b>{perfil.nombre_completo}</b><span>{perfil.rol}</span></div></button><button className="profile-switch" onClick={() => { limpiarSesion(); setCorreo(""); setMensaje("") }}>Cerrar sesión</button></div>
+        <div className="sidebar-bottom"><button className="profile-mini account-trigger" onClick={() => navegar("cuenta")}><div className="avatar">{iniciales}</div><div><b>{perfil.nombre_completo}</b><span>{perfil.rol}</span></div></button><button className="profile-switch" onClick={() => void salir()}>Cerrar sesión</button></div>
       </aside>
       <section className="content">
         <header className="topbar">

@@ -94,6 +94,7 @@ class Conciliacion112B(unittest.TestCase):
         self.assertEqual(fila["responsable_nombre"], "ASISTENTE")
 
     def test_inactivo_no_accede_y_configuracion_no_asume_permisos(self):
+        self.permisos_patch.stop()  # Esta prueba verifica el detector real, no el doble de edición.
         self.actor = "PRACTICANTE"
         with Session(self.engine) as db:
             db.get(Usuario, self.ids[self.actor]).habilitado = False

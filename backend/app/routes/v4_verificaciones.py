@@ -2,6 +2,7 @@
 """Ruta V4: verificaciones y reapertura por observacion."""
 
 from datetime import datetime
+import json
 from typing import Literal
 from uuid import UUID
 
@@ -40,6 +41,22 @@ class VerificacionV4Respuesta(BaseModel):
     estado_actual: Literal["Cerrado", "En revisión"]
 
 
+def datos_cierre_preservado(incidencia, preservado_por: UUID) -> str:
+    """Conserva hechos del cierre vigente, sin fabricar un evento CIERRE pasado."""
+    fecha = incidencia["fecha_cierre"]
+    cerrador = incidencia["cerrado_por_usuario_id"]
+    if not isinstance(fecha, datetime) or cerrador is None:
+        raise HTTPException(409, "El cierre anterior está incompleto; requiere revisión antes de reabrir.")
+    return json.dumps({
+        "formato": "cierre-preservado-v1",
+        "ciclo": incidencia["ciclo_actual"],
+        "fecha_cierre": fecha.isoformat(),
+        "cerrado_por_usuario_id": str(cerrador),
+        "preservado_por_usuario_id": str(preservado_por),
+        "origen": "campos_cierre_vigente",
+    }, ensure_ascii=False)
+
+
 @router.post(
     "/{incidencia_id}/verificaciones",
     response_model=VerificacionV4Respuesta,
@@ -71,7 +88,8 @@ def registrar_verificacion_v4(
         # Bloquear el ticket para evitar evaluaciones simultaneas.
         incidencia = db.execute(
             text("""
-                SELECT id, area_id, estado, ciclo_actual
+                SELECT id, area_id, estado, ciclo_actual,
+                       fecha_cierre, cerrado_por_usuario_id
                 FROM public.incidencias
                 WHERE id = :incidencia_id
                 FOR UPDATE
@@ -174,6 +192,18 @@ def registrar_verificacion_v4(
 
         # Una observacion abre otro ciclo conservando el ticket.
         if decision.limpiar_cierre_vigente:
+            # Misma transacción y bloqueo que la evaluación/reapertura.
+            # Su fecha de registro es la conservación actual; fecha/autor
+            # del cierre original se guardan separados en la descripción.
+            db.execute(
+                text("""
+                    INSERT INTO public.historial_incidencias (
+                        incidencia_id, usuario_id, accion, descripcion, ciclo_atencion
+                    ) VALUES (:id, :actor, 'CIERRE_PRESERVADO', :datos, :ciclo)
+                """),
+                {"id": incidencia_id, "actor": usuario_actual.id, "ciclo": ciclo,
+                 "datos": datos_cierre_preservado(incidencia, usuario_actual.id)},
+            )
             db.execute(
                 text("""
                     UPDATE public.incidencias

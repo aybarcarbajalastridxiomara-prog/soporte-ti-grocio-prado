@@ -36,6 +36,14 @@ export function establecerPrioridad(token: string, id: string, contexto: Context
 }
 
 export function descripcionPrioridad(accion: string, descripcion: string) {
+  if (accion === "CIERRE_PRESERVADO") {
+    try {
+      const dato = JSON.parse(descripcion)
+      if (dato.formato !== "cierre-preservado-v1" || !Number.isInteger(dato.ciclo) ||
+        typeof dato.fecha_cierre !== "string" || typeof dato.cerrado_por_usuario_id !== "string") return descripcion
+      return `Cierre anterior conservado · Ciclo ${dato.ciclo}. Fecha original: ${dato.fecha_cierre}. Responsable original: ${dato.cerrado_por_usuario_id}. Conservado al reabrir; el cierre original no se reescribió.`
+    } catch { return descripcion }
+  }
   if (!["PRIORIDAD_PROVISIONAL", "PRIORIDAD_CONFIRMADA"].includes(accion)) return descripcion
   try {
     const dato = JSON.parse(descripcion)

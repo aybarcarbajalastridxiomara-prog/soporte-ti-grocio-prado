@@ -8,6 +8,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
+from app.lecturas_incidencias import exigir_lectura_tecnica
 from app.db import get_db
 from app.models import Asignacion, HistorialIncidencia, Incidencia, Usuario
 from app.prioridades import DatosPrioridad, Prioridad, sugerir_prioridad, ultimos_eventos
@@ -36,6 +37,8 @@ def asignacion_activa(db: Session, id_: UUID):
 
 
 def consultar_ticket(db: Session, id_: UUID, usuario: Usuario, bloquear=False):
+    if not bloquear:
+        exigir_lectura_tecnica(db, id_, usuario)
     consulta = select(Incidencia).where(Incidencia.id == id_)
     ticket = db.scalar(consulta.with_for_update() if bloquear else consulta)
     if ticket is None or (usuario.rol == "REPRESENTANTE" and ticket.area_id != usuario.area_id):

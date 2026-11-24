@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
+from app.lecturas_incidencias import exigir_lectura_tecnica
 from app.db import get_db
 from app.models import (
     Asignacion,
@@ -208,6 +209,7 @@ def consultar_intervenciones(
     db: Session = Depends(get_db),
 ):
     """Consulta las intervenciones de una incidencia."""
+    exigir_lectura_tecnica(db, incidencia_id, usuario_actual)
 
     roles_validos = {
         "JEFE",

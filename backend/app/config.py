@@ -18,6 +18,11 @@ class Settings:
     supabase_service_role_key: str = ""
     supabase_smtp_configurado: bool = False
     administracion_perfiles_habilitada: bool = False
+    brevo_habilitado: bool = False
+    brevo_api_key: str = ""
+    correo_remitente: str = ""
+    adjuntos_habilitados: bool = False
+    adjuntos_bucket: str = ""
 
 
 @lru_cache
@@ -52,4 +57,9 @@ def get_settings() -> Settings:
         supabase_service_role_key=os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip(),
         supabase_smtp_configurado=os.getenv("SUPABASE_SMTP_CONFIGURADO", "false").lower() == "true",
         administracion_perfiles_habilitada=os.getenv("ADMINISTRACION_PERFILES_HABILITADA", "false").lower() == "true",
+        brevo_habilitado=os.getenv("BREVO_HABILITADO", "false").lower() == "true",
+        brevo_api_key=os.getenv("BREVO_API_KEY", "").strip(),
+        correo_remitente=os.getenv("CORREO_REMITENTE", "").strip(),
+        adjuntos_habilitados=os.getenv("ADJUNTOS_HABILITADOS", "false").lower() == "true",
+        adjuntos_bucket=os.getenv("ADJUNTOS_BUCKET", "").strip(),
     )

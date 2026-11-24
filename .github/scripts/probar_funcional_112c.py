@@ -355,18 +355,24 @@ class FuncionesV4(FuncionesV3):
         self.assertEqual(anterior["fecha_fin"], datetime.fromisoformat(cierre["fecha_cierre"].replace("Z", "+00:00")))
         self.assertEqual(self.fila("SELECT count(*) AS n FROM public.historial_incidencias WHERE incidencia_id=:id AND accion IN ('CIERRE','OBSERVACION','REAPERTURA')", id=UUID(id_))["n"], 3)
 
-    def test_impacto_legado_sin_cierre_historico_requiere_proteccion_futura(self):
+    def test_legado_sin_evento_cierre_conserva_datos_originales_al_reabrir(self):
         id_ = self.crear()
         with admin(self.database) as db:
             db.execute("UPDATE public.incidencias SET estado='Cerrado',fecha_cierre=now(),cerrado_por_usuario_id=%s WHERE id=%s",
                 (self.ids["ASISTENTE"], UUID(id_)))
+        anterior = self.fila("SELECT fecha_cierre,cerrado_por_usuario_id FROM public.incidencias WHERE id=:id", id=UUID(id_))
         r = self.request("REPRESENTANTE", "POST", f"/api/v4/incidencias/{id_}/verificaciones",
             {"resultado": "Observación", "observaciones": "Caso legado ficticio sin historia completa"})
         self.assertEqual(r.status_code, 201, r.text)
-        # Caracterización del riesgo existente, no aceptación del flujo manual.
-        # No se toca el mecanismo de reapertura sin su autorización específica.
+        # Se conserva la reapertura automática, sin fabricar un CIERRE retroactivo.
         self.assertIsNone(self.fila("SELECT fecha_cierre FROM public.incidencias WHERE id=:id", id=UUID(id_))["fecha_cierre"])
         self.assertEqual(self.fila("SELECT count(*) AS n FROM public.historial_incidencias WHERE incidencia_id=:id AND accion='CIERRE'", id=UUID(id_))["n"], 0)
+        copia = self.fila("SELECT usuario_id,descripcion,ciclo_atencion FROM public.historial_incidencias WHERE incidencia_id=:id AND accion='CIERRE_PRESERVADO'", id=UUID(id_))
+        datos = json.loads(copia["descripcion"])
+        self.assertEqual(datetime.fromisoformat(datos["fecha_cierre"]), anterior["fecha_cierre"])
+        self.assertEqual(datos["cerrado_por_usuario_id"], str(anterior["cerrado_por_usuario_id"]))
+        self.assertEqual(copia["usuario_id"], self.ids["REPRESENTANTE"])
+        self.assertEqual(copia["ciclo_atencion"], 1)
 
 
 if __name__ == "__main__":

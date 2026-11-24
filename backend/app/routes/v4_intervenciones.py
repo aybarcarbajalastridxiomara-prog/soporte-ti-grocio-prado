@@ -12,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
+from app.lecturas_incidencias import exigir_lectura_tecnica
 from app.db import get_db
 from app.models import Usuario
 from app.routes.intervenciones import IntervencionCrear
@@ -221,6 +222,7 @@ def listar_intervenciones_v4(
     db: Session = Depends(get_db),
 ):
     """Lista intervenciones por ciclo conservando las atenciones anteriores."""
+    exigir_lectura_tecnica(db, incidencia_id, usuario_actual)
 
     if usuario_actual.rol not in {
         "JEFE", "ASISTENTE", "PRACTICANTE", "REPRESENTANTE"

@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
+from app.lecturas_incidencias import exigir_lectura_tecnica
 from app.db import get_db
 from app.models import (
     HistorialIncidencia,
@@ -206,6 +207,7 @@ def consultar_verificaciones(
     db: Session = Depends(get_db),
 ):
     """Consulta las evaluaciones de una incidencia."""
+    exigir_lectura_tecnica(db, incidencia_id, usuario_actual)
 
     roles_validos = {
         "JEFE",

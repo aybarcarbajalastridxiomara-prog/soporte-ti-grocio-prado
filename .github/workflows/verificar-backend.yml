@@ -187,7 +187,7 @@ jobs:
 
                   respuesta = cliente.get("/api/incidencias")
                   assert respuesta.status_code == 200
-                  assert db_simulada.consulta.whereclause is None
+                  assert str(db_simulada.consulta.whereclause) == "true"
 
               print("Pruebas de permisos de incidencias: OK")
 
@@ -1543,6 +1543,10 @@ jobs:
                           return ticket
                   return None
 
+              def scalar(self, consulta):
+                  parametros = consulta.compile().params.values()
+                  return ticket_id if ticket_id in parametros and tecnico_id in parametros else None
+
               def scalars(self, consulta):
                   self.consulta = consulta
                   return SimpleNamespace(
@@ -1554,7 +1558,7 @@ jobs:
 
           def perfil(rol, area):
               return SimpleNamespace(
-                  id=uuid4(),
+                  id=tecnico_id if rol in {"ASISTENTE", "PRACTICANTE"} else uuid4(),
                   rol=rol,
                   area_id=area,
               )
@@ -1620,7 +1624,7 @@ jobs:
                   respuesta = cliente.get(ruta)
                   assert respuesta.status_code == 200
 
-                  # Asistente y practicante tambien consultan.
+                  # Asistente y practicante participantes conservan la consulta.
                   for rol in ("ASISTENTE", "PRACTICANTE"):
                       api.dependency_overrides[
                           get_current_user
@@ -1630,6 +1634,11 @@ jobs:
 
                       respuesta = cliente.get(ruta)
                       assert respuesta.status_code == 200
+
+                  # Un técnico ajeno no obtiene actuaciones del ticket.
+                  api.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+                      id=uuid4(), rol="ASISTENTE", area_id=area_logistica)
+                  assert cliente.get(ruta).status_code == 404
 
                   # Ticket inexistente.
                   respuesta = cliente.get(
@@ -2443,6 +2452,7 @@ jobs:
           ticket_id = uuid4()
           area_tesoreria = uuid4()
           area_logistica = uuid4()
+          tecnico_id = uuid4()
           fecha = datetime(2026, 11, 5, tzinfo=timezone.utc)
 
           def crear_evaluacion(resultado, detalle, fecha_registro):
@@ -2469,8 +2479,9 @@ jobs:
           ]
 
           class BaseDatosSimulada:
-              def __init__(self, existe=True, sin_evaluaciones=False):
+              def __init__(self, existe=True, sin_evaluaciones=False, participante=True):
                   self.existe = existe
+                  self.participante = participante
                   self.consulta = None
                   self.evaluaciones = (
                       [] if sin_evaluaciones else evaluaciones
@@ -2489,6 +2500,10 @@ jobs:
                       )
                   return None
 
+              def scalar(self, consulta):
+                  parametros = consulta.compile().params.values()
+                  return ticket_id if self.existe and self.participante and ticket_id in parametros and tecnico_id in parametros else None
+
               def scalars(self, consulta):
                   self.consulta = consulta
                   assert (
@@ -2504,7 +2519,7 @@ jobs:
           def probar(cliente, rol, area, db, esperado):
               api.dependency_overrides[get_current_user] = (
                   lambda: SimpleNamespace(
-                      id=uuid4(),
+                      id=tecnico_id,
                       rol=rol,
                       area_id=area,
                   )
@@ -2563,7 +2578,7 @@ jobs:
                       404,
                   )
 
-                  # Jefe, asistente y practicante.
+                  # Jefe y técnicos con participación propia.
                   for rol in ("JEFE", "ASISTENTE", "PRACTICANTE"):
                       respuesta = probar(
                           cliente,
@@ -2573,6 +2588,10 @@ jobs:
                           200,
                       )
                       assert len(respuesta.json()) == 2
+
+                  # Técnicos sin participación no consultan evaluaciones ajenas.
+                  for rol in ("ASISTENTE", "PRACTICANTE"):
+                      probar(cliente, rol, area_logistica, BaseDatosSimulada(participante=False), 404)
 
                   # Incidencia inexistente.
                   probar(
@@ -5151,10 +5170,13 @@ jobs:
                           assert area_propia in (
                               base.consulta.compile().params.values()
                           )
+                      elif rol == 'JEFE':
+                          assert str(clausula) == 'true'
                       else:
-                          assert clausula is None, (
-                              f'Filtro inesperado para {rol}'
-                          )
+                          sql = str(clausula).lower()
+                          assert 'exists' in sql and 'asignaciones.tecnico_id' in sql
+                          assert 'asignaciones.fecha_fin is null' in sql
+                          assert tecnico in base.consulta.compile().params.values()
 
                   print('Listado filtrado segun rol y area: OK')
 

@@ -4,6 +4,7 @@ Solo SQLite en memoria con perfiles ficticios. Sin Supabase, PostgreSQL,
 RLS/triggers reales ni pruebas de concurrencia. No carga archivos .env.
 """
 import os
+import json
 import unittest
 from datetime import datetime, timezone
 from unittest.mock import patch
@@ -21,6 +22,8 @@ from app.auth import get_identity
 from app.db import get_db
 from app.main import app
 from app.models import Area, Asignacion, HistorialIncidencia, Incidencia, Intervencion, Usuario, Verificacion
+from app.routes.v4_verificaciones import datos_cierre_preservado
+from fastapi import HTTPException
 
 
 class Diagnostico112C(unittest.TestCase):
@@ -222,6 +225,36 @@ class Diagnostico112C(unittest.TestCase):
         self.assertEqual([r["incidencia_id"] for r in response.json()], [str(cerrada)])
         self.actor = "ASISTENTE"
         self.assertEqual(self.client.get("/api/seguimiento/observadas").status_code, 403)
+
+    def test_lecturas_ti_restringen_casos_ajenos_y_conservan_libres_e_historicos(self):
+        libre, propia, ajena = self.ticket(), self.ticket("En revisión"), self.ticket("En revisión")
+        self.asignacion(propia, "PRACTICANTE", finalizada=True)
+        self.asignacion(ajena, "ASISTENTE")
+        self.actor = "PRACTICANTE"
+        for ruta in ("", "/historial", "/intervenciones", "/verificaciones",
+                     "/contexto-atencion", "/contexto-toma", "/contexto-prioridad"):
+            with self.subTest(ruta=ruta):
+                self.assertEqual(self.client.get(f"/api/incidencias/{ajena}{ruta}").status_code, 404)
+        for id_ in (libre, propia):
+            self.assertEqual(self.client.get(f"/api/incidencias/{id_}").status_code, 200)
+        with patch("app.lecturas_incidencias.esquema_v4_disponible", return_value=False):
+            listado = self.client.get("/api/incidencias").json()
+        self.assertEqual({i["id"] for i in listado}, {str(libre), str(propia)})
+        self.actor = "JEFE"
+        self.assertEqual(self.client.get(f"/api/incidencias/{ajena}").status_code, 200)
+
+    def test_cierre_preservado_distingue_autor_original_y_actor_actual(self):
+        fecha = datetime(2026, 1, 2, 12, tzinfo=timezone.utc)
+        datos = dict(fecha_cierre=fecha, cerrado_por_usuario_id=self.ids["ASISTENTE"], ciclo_actual=3)
+        registro = json.loads(datos_cierre_preservado(datos, self.ids["REPRESENTANTE"]))
+        self.assertEqual(registro["fecha_cierre"], fecha.isoformat())
+        self.assertEqual(registro["cerrado_por_usuario_id"], str(self.ids["ASISTENTE"]))
+        self.assertEqual(registro["preservado_por_usuario_id"], str(self.ids["REPRESENTANTE"]))
+        self.assertEqual(registro["ciclo"], 3)
+        for campo in ("fecha_cierre", "cerrado_por_usuario_id"):
+            with self.subTest(campo=campo), self.assertRaises(HTTPException) as error:
+                datos_cierre_preservado({**datos, campo: None}, self.ids["REPRESENTANTE"])
+            self.assertEqual(error.exception.status_code, 409)
 
 
 if __name__ == "__main__":

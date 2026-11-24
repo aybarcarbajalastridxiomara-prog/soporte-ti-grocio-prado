@@ -2,16 +2,16 @@
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
-from sqlalchemy import select, text
+from sqlalchemy import select, text, func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user, require_roles
 from app.config import get_settings
 from app.db import get_db
-from app.models import Area, Usuario
+from app.models import Area, Usuario, AuditoriaAdministrativa
 from app.supabase_admin import invitar_en_supabase
 
 
@@ -123,6 +123,8 @@ def permisos_administrativos_verificados(db: Session) -> bool:
           AND has_schema_privilege(current_user,'public','USAGE')
           AND has_table_privilege(current_user,'public.usuarios','SELECT')
           AND has_table_privilege(current_user,'public.areas','SELECT')
+          AND has_table_privilege(current_user,to_regclass('public.auditoria_administrativa'),'SELECT')
+          AND has_table_privilege(current_user,to_regclass('public.auditoria_administrativa'),'INSERT')
           AND has_any_column_privilege(current_user,'public.areas','UPDATE')
           AND NOT EXISTS (
             SELECT 1 FROM (VALUES ('id'),('area_id'),('nombre_completo'),('usuario'),('rol'),('habilitado')) c(nombre)
@@ -199,15 +201,41 @@ def listar_areas(
     return db.scalars(select(Area).order_by(Area.nombre)).all()
 
 
-def comprobar_escritura():
+def comprobar_escritura(db: Session):
     if not get_settings().administracion_perfiles_habilitada:
         raise HTTPException(503, "Administración de perfiles deshabilitada. El operador debe validar los permisos PostgreSQL antes de habilitarla.")
+    if not permisos_administrativos_verificados(db):
+        raise HTTPException(503, "Administración bloqueada: valida permisos, cupo de representantes y auditoría en PostgreSQL.")
+
+
+def datos_auditables(usuario):
+    return {"rol": usuario.rol, "area_id": str(usuario.area_id), "habilitado": usuario.habilitado}
+
+
+@router.get("/administracion/historial")
+def historial_administrativo(_jefe: Usuario = Depends(require_roles("JEFE")), db: Session = Depends(get_db), limite: int = Query(50, ge=1, le=100)):
+    try:
+        return db.scalars(select(AuditoriaAdministrativa).order_by(AuditoriaAdministrativa.fecha_registro.desc(),AuditoriaAdministrativa.id.desc()).limit(limite)).all()
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(503, "Historial administrativo pendiente de preparar en este entorno.") from None
 
 
 def validar_area(db: Session, area_id: UUID):
     area = db.get(Area, area_id)
     if area is None or not area.activo:
         raise HTTPException(422, "Seleccione un área activa existente.")
+
+
+def validar_cupo_antes_de_invitar(db: Session, datos: UsuarioInvitar):
+    if datos.rol != "REPRESENTANTE":
+        return
+    # Evita crear una identidad externa que ya sabemos que no tendrá cupo.
+    db.scalar(select(Area.id).where(Area.id == datos.area_id).with_for_update())
+    cantidad = db.scalar(select(func.count()).select_from(Usuario).where(
+        Usuario.area_id == datos.area_id, Usuario.rol == "REPRESENTANTE", Usuario.habilitado.is_(True)))
+    if cantidad >= 2:
+        raise HTTPException(409, "El área ya tiene el cupo autorizado de representantes. No se envió invitación.")
 
 
 def bloquear_jefes(db: Session, jefe: Usuario):
@@ -226,7 +254,7 @@ def actualizar_usuario(
     jefe: Usuario = Depends(require_roles("JEFE")),
     db: Session = Depends(get_db),
 ):
-    comprobar_escritura()
+    comprobar_escritura(db)
     bloquear_jefes(db, jefe)
     usuario = db.scalar(select(Usuario).where(Usuario.id == usuario_id).with_for_update())
     if usuario is None:
@@ -235,18 +263,22 @@ def actualizar_usuario(
         raise HTTPException(409, "No puedes deshabilitar tu propio acceso ni retirar tu rol de JEFE.")
     if datos.area_id is not None:
         validar_area(db, datos.area_id)
+    anterior = datos_auditables(usuario)
     try:
         for campo, valor in datos.model_dump(exclude_unset=True).items():
             setattr(usuario, campo, valor)
         db.flush()
         respuesta = MiPerfil.model_validate(usuario)
+        db.add(AuditoriaAdministrativa(actor_id=jefe.id, usuario_id=usuario.id, accion="EDITAR_PERFIL", anterior=anterior, nuevo=datos_auditables(usuario)))
         db.commit()
         return respuesta
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "El usuario ya existe o los datos no cumplen las reglas del sistema.") from None
-    except SQLAlchemyError:
+    except SQLAlchemyError as error:
         db.rollback()
+        if getattr(getattr(error, "orig", None), "sqlstate", None) == "P0001":
+            raise HTTPException(409, "El perfil excede el cupo autorizado de representantes del área.") from None
         raise HTTPException(503, "No se pudo guardar el perfil. Revisa los permisos de administración PostgreSQL.") from None
 
 
@@ -259,8 +291,10 @@ def invitar_usuario(
     configuracion = estado_administracion()
     if not configuracion["invitaciones_habilitadas"]:
         raise HTTPException(503, " ".join(configuracion["motivos"]))
+    comprobar_escritura(db)
     bloquear_jefes(db, jefe)
     validar_area(db, datos.area_id)
+    validar_cupo_antes_de_invitar(db, datos)
     if db.scalar(select(Usuario.id).where(Usuario.usuario == datos.usuario)):
         raise HTTPException(409, "El nombre de usuario ya está registrado.")
     # Auth crea la cuenta y gestiona el correo. Nunca se recibe una contraseña.
@@ -276,6 +310,7 @@ def invitar_usuario(
         db.add(usuario)
         db.flush()
         respuesta = MiPerfil.model_validate(usuario)
+        db.add(AuditoriaAdministrativa(actor_id=jefe.id, usuario_id=usuario.id, accion="INVITAR_PERFIL", anterior={}, nuevo=datos_auditables(usuario)))
         db.commit()
         return respuesta
     except SQLAlchemyError:

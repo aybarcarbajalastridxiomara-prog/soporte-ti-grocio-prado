@@ -63,3 +63,14 @@ test("historial diferencia propuesta provisional y confirmación conservando tex
   assert.equal(ti.descripcionPrioridad("CIERRE", "Cierre anterior"), "Cierre anterior")
   assert.equal(ti.descripcionPrioridad("PRIORIDAD_PROVISIONAL", "Texto legado"), "Texto legado")
 })
+
+test("historial identifica los datos originales conservados al reabrir sin inventar un cierre", () => {
+  const datos = { formato: "cierre-preservado-v1", ciclo: 2, fecha_cierre: "2026-11-18T12:30:00+00:00", cerrado_por_usuario_id: "tecnico-ficticio" }
+  const texto = ti.descripcionPrioridad("CIERRE_PRESERVADO", JSON.stringify(datos))
+  assert.match(texto, /Ciclo 2/)
+  assert.match(texto, /2026-11-18T12:30:00/)
+  assert.match(texto, /Responsable original: tecnico-ficticio/)
+  assert.match(texto, /Conservado al reabrir/)
+  assert.equal(ti.descripcionPrioridad("CIERRE_PRESERVADO", "Texto histórico"), "Texto histórico")
+  assert.equal(ti.descripcionPrioridad("CIERRE_PRESERVADO", '{"formato":"otro"}'), '{"formato":"otro"}')
+})

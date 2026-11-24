@@ -32,6 +32,10 @@ def get_engine() -> Engine:
             "La base de datos debe ser PostgreSQL."
         )
 
+    sslmode = url.query.get("sslmode", "require")
+    if sslmode not in ("require", "verify-ca", "verify-full"):
+        raise ValueError("La conexión PostgreSQL requiere TLS verificado o cifrado.")
+
    
     return create_engine(
         url,
@@ -39,9 +43,10 @@ def get_engine() -> Engine:
         max_overflow=0,
         pool_timeout=10,
         pool_pre_ping=True,
+        hide_parameters=True,
         connect_args={
             "connect_timeout": 10,
-            "sslmode": "require",
+            "sslmode": sslmode,
             "prepare_threshold": None,
         },
     )

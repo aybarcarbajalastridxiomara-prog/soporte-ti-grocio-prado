@@ -10,6 +10,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
+from app.lecturas_incidencias import exigir_lectura_tecnica
 from app.db import get_db
 from app.models import Asignacion, Incidencia, Intervencion, Usuario
 from app.v4_esquema import esquema_v4_disponible
@@ -41,6 +42,7 @@ def consultar_contexto_atencion(
     if usuario_actual.rol not in {"JEFE", "ASISTENTE", "PRACTICANTE"}:
         raise HTTPException(status_code=403, detail="Solo personal TI autorizado.")
 
+    exigir_lectura_tecnica(db, incidencia_id, usuario_actual)
     incidencia = db.get(Incidencia, incidencia_id)
     if incidencia is None:
         raise HTTPException(status_code=404, detail="Incidencia no encontrada.")

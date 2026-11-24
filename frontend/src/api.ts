@@ -86,20 +86,80 @@ export const sesionReal = new GestorSesion(async (refresh_token) => {
   return validarSesion(await respuesta.json())
 })
 
-/** El enlace de invitación de Auth vuelve al Site URL autorizado por Supabase. */
-export function recibirInvitacionReal(): SesionReal | null {
+/** Consume únicamente enlaces Auth admitidos y retira tokens antes de consultar. */
+export function recibirEnlaceAuthReal(): { sesion: SesionReal; tipo: "invite" | "recovery" } | null {
+  const consulta = new URLSearchParams(window.location.search)
+  if (["code", "token_hash", "access_token", "refresh_token"].some(k => consulta.has(k))) {
+    for (const k of ["code", "token_hash", "access_token", "refresh_token", "type"]) consulta.delete(k)
+    window.history.replaceState(null, "", window.location.pathname + (consulta.size ? `?${consulta}` : ""))
+    throw new Error("Este enlace necesita un flujo de Auth no configurado. Solicita un enlace compatible al operador.")
+  }
   const parametros = new URLSearchParams(window.location.hash.slice(1))
   if (!parametros.has("access_token") && !parametros.has("error")) return null
   // Retirar credenciales de la barra y del historial antes de consultar el perfil.
   window.history.replaceState(null, "", window.location.pathname + window.location.search)
-  if (parametros.has("error")) throw new Error("El enlace de invitación expiró o no es válido. Contacta a la jefatura.")
-  if (parametros.get("type") !== "invite") throw new Error("Enlace de acceso no compatible. Inicia sesión con tu cuenta institucional.")
+  if (parametros.has("error")) throw new Error("El enlace de acceso expiró o no es válido. Solicita uno nuevo.")
+  const tipo = parametros.get("type")
+  if (tipo !== "invite" && tipo !== "recovery") throw new Error("Enlace de acceso no compatible. Inicia sesión con tu cuenta institucional.")
+  if (parametros.has("expires_at") && (!Number.isFinite(Number(parametros.get("expires_at"))) || Number(parametros.get("expires_at")) * 1000 <= Date.now())) throw new Error("El enlace expiró. Solicita uno nuevo.")
   const sesion = validarSesion({
     access_token: parametros.get("access_token"), refresh_token: parametros.get("refresh_token"),
     expires_in: Number(parametros.get("expires_in")),
   })
   sesionReal.establecer(sesion)
-  return sesion
+  return { sesion, tipo }
+}
+
+export function recibirInvitacionReal(): SesionReal | null {
+  const enlace = recibirEnlaceAuthReal()
+  if (enlace && enlace.tipo !== "invite") { sesionReal.limpiar(); throw new Error("Utiliza la pantalla de recuperación.") }
+  return enlace?.sesion ?? null
+}
+
+export const recuperacionHabilitada = import.meta.env.VITE_RECUPERACION_HABILITADA === "true"
+let ultimaSolicitudRecuperacion = 0
+export async function solicitarRecuperacionReal(correo: string) {
+  if (!recuperacionHabilitada || !SUPABASE_URL || !PUBLIC_KEY) throw new Error("Recuperación pendiente de configurar y validar con Supabase Auth.")
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo.trim())) throw new Error("Introduce un correo válido.")
+  if (Date.now() - ultimaSolicitudRecuperacion < 60000) throw new Error("Espera un minuto antes de solicitar otro enlace.")
+  const destino = new URL(window.location.pathname, window.location.origin)
+  if (destino.protocol !== "https:" && !["127.0.0.1", "localhost"].includes(destino.hostname)) throw new Error("El acceso necesita HTTPS.")
+  ultimaSolicitudRecuperacion = Date.now()
+  let respuesta: Response
+  try {
+    respuesta = await fetch(`${SUPABASE_URL}/auth/v1/recover?redirect_to=${encodeURIComponent(destino.href)}`, {
+      method: "POST", headers: { apikey: PUBLIC_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ email: correo.trim() }), cache: "no-store", signal: AbortSignal.timeout(15000), redirect: "error",
+    })
+  } catch { throw new Error("No se pudo contactar a Auth. Comprueba la conexión antes de reintentar.") }
+  if (respuesta.status === 429) throw new Error("Auth limitó los intentos. Espera antes de solicitar otro enlace.")
+  if (!respuesta.ok) throw new Error("Auth no confirmó la solicitud. Revisa la configuración de correo y los requisitos de acceso.")
+  return "Si existe una cuenta apta para recuperación, recibirás un enlace. Revisa tu correo y la carpeta de spam."
+}
+
+export async function completarRecuperacionReal(token: string, identidad: string, nueva: string) {
+  if (nueva.length < 12) throw new Error("Usa una contraseña de al menos 12 caracteres.")
+  const propia = await consultarUsuarioAuth(token)
+  if (propia.id !== identidad || !sesionReal.esSesionActual(token)) throw new SesionExpirada()
+  const access = await sesionReal.obtenerToken(token)
+  const respuesta = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    method: "PUT", headers: { apikey: PUBLIC_KEY, Authorization: `Bearer ${access}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ password: nueva }), cache: "no-store", signal: AbortSignal.timeout(15000), redirect: "error",
+  })
+  if ([401, 403].includes(respuesta.status)) sesionReal.expirar()
+  if (!respuesta.ok) throw new Error("Auth no confirmó la nueva contraseña. Revisa su política o solicita otro enlace.")
+  const usuario = await respuesta.json() as UsuarioAuth
+  if (usuario.id !== identidad) throw new Error("No se pudo confirmar la identidad. Vuelve al login.")
+  await fetch(`${SUPABASE_URL}/auth/v1/logout?scope=global`, { method: "POST", headers: { apikey: PUBLIC_KEY, Authorization: `Bearer ${access}` }, cache: "no-store", signal: AbortSignal.timeout(5000) }).catch(() => undefined)
+  sesionReal.limpiar()
+}
+
+export async function cerrarSesionReal(token: string) {
+  try {
+    const access = await sesionReal.obtenerToken(token)
+    const respuesta = await fetch(`${SUPABASE_URL}/auth/v1/logout?scope=local`, {method:"POST",headers:{apikey:PUBLIC_KEY,Authorization:`Bearer ${access}`},cache:"no-store",signal:AbortSignal.timeout(10000),redirect:"error"})
+    if (!respuesta.ok && respuesta.status !== 401) throw new Error("La sesión local se cerró; no se pudo confirmar su revocación en Auth.")
+  } finally { sesionReal.limpiar() }
 }
 
 export async function establecerClaveInvitada(token: string, password: string) {
@@ -171,7 +231,7 @@ async function solicitarRespuesta(
   let tokenActual = await sesionReal.obtenerToken(token)
   headers.set("Authorization", `Bearer ${tokenActual}`)
 
-  if (opciones.body) {
+  if (opciones.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json")
   }
 
@@ -208,6 +268,21 @@ async function solicitarRespuesta(
 
 export async function solicitarAPI<T>(ruta: string, token: string, opciones: RequestInit = {}): Promise<T> {
   return await (await solicitarRespuesta(ruta, token, opciones)).json() as T
+}
+
+export function subirAdjuntoReal(token: string, incidencia: string, archivo: File) {
+  if (!archivo.size || archivo.size > 4_000_000) throw new Error("El archivo debe contener datos y no superar 4 MB.")
+  return solicitarAPI(`/api/incidencias/${encodeURIComponent(incidencia)}/adjuntos?nombre=${encodeURIComponent(archivo.name)}`,token,
+    {method:"POST",headers:{"Content-Type":archivo.type || "application/octet-stream"},body:archivo,redirect:"error"})
+}
+
+export async function descargarAdjuntoReal(token: string, incidencia: string, adjunto: string) {
+  const respuesta = await solicitarRespuesta(`/api/incidencias/${encodeURIComponent(incidencia)}/adjuntos/${encodeURIComponent(adjunto)}/descargar`,token,{redirect:"error"})
+  const tipo=respuesta.headers.get("Content-Type")?.split(";")[0]
+  if (!tipo || !["image/jpeg","image/png","image/webp","application/pdf"].includes(tipo)) throw new Error("No se recibió un adjunto permitido.")
+  const blob=await respuesta.blob()
+  if(!blob.size || blob.size>4_000_000) throw new Error("Tamaño de descarga no permitido.")
+  return blob
 }
 
 export async function solicitarArchivoReporte(ruta: string, token: string, formato: "pdf" | "xlsx", signal?: AbortSignal): Promise<Blob> {

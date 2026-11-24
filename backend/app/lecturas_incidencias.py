@@ -1,10 +1,39 @@
 """Lecturas operativas; no modifica datos ni requiere migraciones V4."""
-from sqlalchemy import literal_column, select, true
+from fastapi import HTTPException
+from sqlalchemy import and_, false, literal_column, or_, select, true
 from sqlalchemy.orm import Session
 
 from app.models import Area, Asignacion, Incidencia, Usuario
 from app.v4_esquema import esquema_v4_disponible
 from app.prioridades import ultimos_eventos
+
+
+def condicion_visibilidad(usuario: Usuario):
+    """TI conserva casos libres y participación propia, sin abrir casos ajenos."""
+    if usuario.rol == "JEFE":
+        return true()
+    if usuario.rol == "REPRESENTANTE":
+        return Incidencia.area_id == usuario.area_id
+    if usuario.rol not in {"ASISTENTE", "PRACTICANTE"}:
+        return false()
+    propia = select(Asignacion.id).where(
+        Asignacion.incidencia_id == Incidencia.id,
+        Asignacion.tecnico_id == usuario.id,
+    ).correlate(Incidencia).exists()
+    activa = select(Asignacion.id).where(
+        Asignacion.incidencia_id == Incidencia.id,
+        Asignacion.fecha_fin.is_(None),
+    ).correlate(Incidencia).exists()
+    return or_(propia, Incidencia.cerrado_por_usuario_id == usuario.id,
+        and_(Incidencia.estado.in_(["Pendiente", "En revisión"]), ~activa))
+
+
+def exigir_lectura_tecnica(db: Session, incidencia_id, usuario: Usuario):
+    if usuario.rol in {"ASISTENTE", "PRACTICANTE"} and db.scalar(
+        select(Incidencia.id).where(Incidencia.id == incidencia_id,
+            condicion_visibilidad(usuario)).limit(1)
+    ) is None:
+        raise HTTPException(404, "Incidencia no encontrada.")
 
 
 def condicion_ciclo(db: Session):

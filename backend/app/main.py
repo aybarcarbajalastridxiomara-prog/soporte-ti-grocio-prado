@@ -26,6 +26,7 @@ from app.routes.contexto_atencion import router as contexto_atencion_router
 from app.routes.contexto_verificacion import router as contexto_verificacion_router
 from app.routes.operaciones_ti import router as operaciones_ti_router
 from app.routes.reportes import router as reportes_router
+from app.routes.adjuntos import router as adjuntos_router
 
 
 app = FastAPI(
@@ -88,6 +89,7 @@ app.include_router(contexto_atencion_router)
 app.include_router(contexto_verificacion_router)
 app.include_router(operaciones_ti_router)
 app.include_router(reportes_router)
+app.include_router(adjuntos_router)
 
 incluir_router_v3_protegido(incidencias_router)
 incluir_router_v3_protegido(asignaciones_router)
