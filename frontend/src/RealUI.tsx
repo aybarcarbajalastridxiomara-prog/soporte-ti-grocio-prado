@@ -23,6 +23,9 @@ export function Icon({ name }: { name: string }) {
     "login-eye-off": "m3 3 18 18M10 6.2a11 11 0 0 1 2-.2c6.5 0 10 6 10 6a17 17 0 0 1-3.2 3.5M6 8.3A17 17 0 0 0 2 12s3.5 6 10 6c1.3 0 2.6-.3 3.7-.7M10 10a3 3 0 0 0 4 4",
     "login-enter": "M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5M2 12h12m-5-5 5 5-5 5",
     "login-shield": "M12 22S4 18 4 11V5l8-3 8 3v6c0 7-8 11-8 11Zm-4-10 3 3 5-6",
+    "sidebar-power": "M12 2v9M7 5a9 9 0 1 0 10 0",
+    "sidebar-wrench": "M21 3a6 6 0 0 1-7.4 8.6l-8 8a2 2 0 0 1-2.8-2.8l8-8A6 6 0 0 1 19 2l-4 4 3 3 4-4Z",
+    "shell-home": "m2 11 10-9 10 9M5 9v12h5v-7h4v7h5V9",
   }
   return <svg className="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={paths[name] || paths.clipboard} /></svg>
 }

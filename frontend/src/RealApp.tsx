@@ -268,12 +268,12 @@ export default function RealApp() {
   const representante = perfil.rol === "REPRESENTANTE"
   const tecnico = ["JEFE", "ASISTENTE", "PRACTICANTE"].includes(perfil.rol)
   const opciones: { vista: VistaReal; icono: string }[] = [
-    { vista: "dashboard", icono: "dashboard" }, { vista: "incidencias", icono: "clipboard" },
+    { vista: "dashboard", icono: "dashboard" }, { vista: "incidencias", icono: "login-ticket" },
     ...(representante ? [{ vista: "registro" as const, icono: "plus" }] : []),
     ...(jefe ? [{ vista: "asignaciones" as const, icono: "users" }] : []),
-    ...(tecnico ? [{ vista: "atencion" as const, icono: "tool" }] : []),
+    ...(tecnico ? [{ vista: "atencion" as const, icono: "sidebar-wrench" }] : []),
     ...(jefe ? [{ vista: "usuarios" as const, icono: "users" }] : []),
-    ...(jefe ? [{ vista: "reportes" as const, icono: "reports" }] : []),
+    ...(jefe ? [{ vista: "reportes" as const, icono: "login-bars" }] : []),
     { vista: "cuenta", icono: "user" },
   ]
   const vistaPermitida = (!["usuarios", "asignaciones", "reportes"].includes(vista) || jefe) && (vista !== "atencion" || tecnico) && (vista !== "registro" || representante)
@@ -282,19 +282,39 @@ export default function RealApp() {
   return (
     <main className="app-shell real-app">
       {menu && <button className="sidebar-backdrop" aria-label="Cerrar menú" onClick={() => setMenu(false)} />}
-      <aside id="menu-principal" className={`sidebar${menu ? " open" : ""}`}>
-        <div className="brand"><div className="crest">TI</div><div><strong>Soporte TI</strong><span>Grocio Prado</span></div></div>
-        <div className="prototype">GESTIÓN DE INCIDENCIAS</div>
-        <nav aria-label="Navegación principal">{opciones.map((opcion) => <button type="button" key={opcion.vista} className={`nav-item${vista === opcion.vista ? " active" : ""}`} aria-current={vista === opcion.vista ? "page" : undefined} onClick={() => navegar(opcion.vista)}><Icon name={opcion.icono} />{opcion.vista === "incidencias" && representante ? "Mis incidencias" : opcion.vista === "atencion" && !jefe ? "Mis atenciones" : titulos[opcion.vista]}</button>)}</nav>
-        <div className="sidebar-bottom"><button className="profile-mini account-trigger" onClick={() => navegar("cuenta")}><div className="avatar">{iniciales}</div><div><b>{perfil.nombre_completo}</b><span>{perfil.rol}</span></div></button><button className="profile-switch" onClick={() => void salir()}>Cerrar sesión</button></div>
+      <aside id="menu-principal" className={`sidebar real-sidebar${menu ? " open" : ""}`}>
+        <div className="real-sidebar-municipio">
+          <span className="real-access-seal" aria-hidden="true"><img src={escudoGrocioPrado} alt="" /></span>
+          <div><span>Municipalidad Distrital de</span><strong>Grocio Prado</strong></div>
+        </div>
+        <nav aria-label="Navegación principal">
+          {opciones.map(({ vista: destino, icono }) => (
+            <button type="button" key={destino} className={`nav-item${vista === destino ? " active" : ""}`} aria-current={vista === destino ? "page" : undefined} onClick={() => navegar(destino)}>
+              <Icon name={icono} />
+              {destino === "incidencias" && representante ? "Mis incidencias" : destino === "atencion" && !jefe ? "Mis atenciones" : titulos[destino]}
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-bottom">
+          <button type="button" className="profile-mini account-trigger" onClick={() => navegar("cuenta")}>
+            <div className="avatar">{iniciales}</div>
+            <div><b>{perfil.nombre_completo}</b><span>{perfil.rol}</span></div>
+            <Icon name="arrow" />
+          </button>
+          <button type="button" className="profile-switch" onClick={() => void salir()}><Icon name="sidebar-power" /> Cerrar sesión</button>
+        </div>
       </aside>
       <section className="content">
-        <header className="topbar">
+        <header className="topbar real-topbar">
           <button ref={botonMenu} className="menu-button" aria-label={menu ? "Cerrar menú" : "Abrir menú"} aria-expanded={menu} aria-controls="menu-principal" onClick={() => setMenu(!menu)}>☰</button>
-          <div><p className="breadcrumb">Sistema de Gestión de Incidencias / {titulos[vista]}</p><h1>{ticketSeleccionado ? "Detalle de incidencia" : titulos[vista]}</h1></div>
+          <div className="real-topbar-title">
+            <Icon name="shell-home" />
+            <div><p className="breadcrumb">Sistema de Gestión de Incidencias</p><h1>{ticketSeleccionado ? "Detalle de incidencia" : titulos[vista]}</h1></div>
+          </div>
           <div className="top-actions"><span className="connection-label"><i />Acceso institucional</span><button className="avatar avatar-button" aria-label="Abrir mi cuenta" onClick={() => navegar("cuenta")}>{iniciales}</button></div>
         </header>
         <div className="page">
+          {vista === "dashboard" && !ticketSeleccionado && <p className="real-shell-greeting">¡Hola, {perfil.nombre_completo}!</p>}
           {mensaje && <div className="notice real-message" role="status">{mensaje}</div>}
           {!vistaPermitida ? <div className="card empty"><h2>Esta sección requiere otro rol</h2><button className="outline" onClick={() => navegar("dashboard")}>Volver al panel</button></div> : vista === "usuarios" && jefe ? <RealAdministration token={sesion.access_token} perfil={perfil} /> : vista === "cuenta" ? (
             <RealAccount token={sesion.access_token} perfil={perfil} actualizar={actualizar} cargando={cargando} alCambiarClave={() => { limpiarSesion(); setMensaje("Contraseña actualizada. Inicia sesión con tu nueva contraseña.") }} />
