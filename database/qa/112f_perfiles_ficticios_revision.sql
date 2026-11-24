@@ -1,4 +1,4 @@
--- SOLO soporte-ti-grocio-qa (sygfauunjvhaoyczdhuu). REVISIÓN MANUAL.
+-- SOLO soporte-ti-grocio-qa-2 (vmtvttlmnqcucotskceh). REVISIÓN MANUAL.
 -- No ejecutar en el proyecto municipal. Requiere 01..05 y la marca QA verificada.
 -- Los UUID deben proceder de identidades ficticias creadas por Authentication.
 -- No contiene UUID inventados, correos ni contraseñas. No escribe auth.users.
@@ -15,7 +15,7 @@ DECLARE
     v_area uuid;
     v_existente public.usuarios%ROWTYPE;
 BEGIN
-    IF current_setting('grocio.qa_project',true) IS DISTINCT FROM 'sygfauunjvhaoyczdhuu'
+    IF obj_description(to_regclass('public.areas'), 'pg_class') IS DISTINCT FROM 'grocio.qa_project=vmtvttlmnqcucotskceh'
        OR current_database()<>'postgres' THEN
         RAISE EXCEPTION 'Destino QA no acreditado: sin cambios';
     END IF;

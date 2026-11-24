@@ -125,7 +125,7 @@ def mensaje_brevo(id_,correo,contenido,remitente,*,sandbox=False):
 def validar_brevo_sandbox():
     """Solo validación oficial sin entrega. No consume ni marca la cola como enviada.
 
-    Operación manual privada, nunca llamada por FastAPI o por el worker.
+    Operación manual privada, independiente de FastAPI y del procesamiento de la cola.
     Aun el sandbox exige una clave y un remitente válidos de una cuenta autorizada.
     """
     from uuid import uuid4

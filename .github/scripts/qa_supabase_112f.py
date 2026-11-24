@@ -14,8 +14,9 @@ import sys
 from urllib.parse import urlsplit
 
 REPO=Path(__file__).resolve().parents[2]
-PROJECT='sygfauunjvhaoyczdhuu'
+PROJECT='vmtvttlmnqcucotskceh'
 ORIGIN=f'https://{PROJECT}.supabase.co'
+DATABASE_MARKER=f'grocio.qa_project={PROJECT}'
 BUCKET='incidencias-qa'
 TABLES={'areas','usuarios','incidencias','asignaciones','intervenciones','verificaciones',
     'evidencias','historial_incidencias','notificaciones_salida','auditoria_administrativa'}
@@ -86,11 +87,16 @@ def verificar_remoto(config):
     if set(meta.get('allowed_mime_types') or [])!={'application/pdf','image/jpeg','image/png'} or not 4_000_000<=int(meta.get('file_size_limit') or 0)<=5_242_880:
         raise QANoPreparado('Formatos o límite del bucket QA distintos de lo previsto.')
     engine=create_engine(config.database_url,echo=False,hide_parameters=True,
-        connect_args={'connect_timeout':5,'options':'-c default_transaction_read_only=on','application_name':'grocio_qa_preflight'})
+        connect_args={'connect_timeout':5,'prepare_threshold':None,'application_name':'grocio_qa_preflight'})
     try:
         with engine.connect() as con:
-            row=con.execute(text("SELECT current_database(),current_user,current_setting('grocio.qa_project',true),current_setting('transaction_read_only')")).one()
-            if tuple(row)!=('postgres','soporte_ti_api',PROJECT,'on'):
+            con.exec_driver_sql("SET TRANSACTION READ ONLY")
+            row=con.execute(text(
+                "SELECT current_database(), current_user, "
+                "obj_description(to_regclass('public.areas'), 'pg_class'), "
+                "current_setting('transaction_read_only')"
+            )).one()
+            if tuple(row)!=('postgres','soporte_ti_api',DATABASE_MARKER,'on'):
                 raise QANoPreparado('Identidad o marca PostgreSQL QA no confirmada.')
             flags=con.execute(text('SELECT rolsuper,rolbypassrls,rolcreaterole,rolcreatedb,rolinherit,rolreplication FROM pg_roles WHERE rolname=current_user')).one()
             if any(flags):raise QANoPreparado('El rol API QA tiene privilegios excesivos.')

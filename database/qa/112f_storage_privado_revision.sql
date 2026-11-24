@@ -1,4 +1,4 @@
--- Solo QA sygfauunjvhaoyczdhuu. Revisión/aplicación MANUAL; no crea buckets.
+-- Solo QA vmtvttlmnqcucotskceh. Revisión/aplicación MANUAL; no crea buckets.
 -- Defensa explícita: el navegador no accede directamente al bucket QA.
 -- FastAPI aplica los permisos por incidencia; service_role permanece solo en servidor.
 BEGIN;
@@ -8,7 +8,7 @@ DECLARE
     v_p record;
     v_condicion text := '(bucket_id <> ''incidencias-qa''::text)';
 BEGIN
-    IF current_setting('grocio.qa_project',true) IS DISTINCT FROM 'sygfauunjvhaoyczdhuu'
+    IF obj_description(to_regclass('public.areas'), 'pg_class') IS DISTINCT FROM 'grocio.qa_project=vmtvttlmnqcucotskceh'
        OR current_database()<>'postgres' THEN
         RAISE EXCEPTION 'Destino QA no acreditado: sin cambios';
     END IF;
