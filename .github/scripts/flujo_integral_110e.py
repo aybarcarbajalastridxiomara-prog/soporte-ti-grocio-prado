@@ -128,8 +128,10 @@ try:
               409, "No permite asignación duplicada")
 
     perfil(TEC2, "PRACTICANTE")
-    verificar(cliente.get(f"{ruta}/contexto-atencion"), 200,
-              "Técnico no titular puede consultar contexto")
+    # El ticket ya tiene otro responsable y TEC2 nunca participó.
+    # El contexto no debe revelar su existencia ni sus permisos.
+    verificar(cliente.get(f"{ruta}/contexto-atencion"), 404,
+              "Técnico ajeno no consulta contexto de atención")
     verificar(enviar(f"{ruta}/intervenciones", {
         "diagnostico": "Diagnóstico ajeno", "acciones_realizadas": "Sin autorización"
     }), 403, "Técnico no asignado no puede intervenir")
@@ -194,6 +196,10 @@ try:
               201, "Jefe asigna nuevo técnico al ciclo 2")
 
     perfil(TEC1, "ASISTENTE")
+    historico = verificar(cliente.get(f"{ruta}/contexto-atencion"), 200,
+                          "Participante histórico conserva lectura del ciclo reabierto")
+    assert not historico["es_responsable"]
+    assert not historico["puede_intervenir"] and not historico["puede_cerrar"]
     verificar(enviar(f"{v4}/intervenciones", {
         "diagnostico": "Ajeno", "acciones_realizadas": "Intento de intervenir",
     }), 403, "Técnico del ciclo anterior no puede intervenir V4")
@@ -243,6 +249,14 @@ try:
     atenciones = verificar(cliente.get(f"{v4}/intervenciones"), 200,
                           "Representante consulta intervenciones de todos los ciclos")
     assert [x["ciclo_atencion"] for x in atenciones] == [1, 1, 2]
+
+    for tecnico, rol in ((TEC1, "ASISTENTE"), (TEC2, "PRACTICANTE")):
+        perfil(tecnico, rol)
+        informe = verificar(cliente.get(f"{ruta}/informe-tecnico/borrador"), 200,
+                            f"{rol} participante conserva su informe técnico")
+        assert len(informe["intervenciones"]) == 3
+        verificar(cliente.get("/api/reportes/incidencias"), 403,
+                  f"{rol} no accede a reportes institucionales")
 
     ciclos = registros("""
         SELECT ciclo_actual, estado FROM public.incidencias WHERE id=:id

@@ -233,9 +233,15 @@ jobs:
               ], check=True)
 
           try:
-              # El backend V4 no debe tocar una base sin migracion.
+              # La lectura comprueba visibilidad antes de revelar el esquema.
+              # NUEVO no participó en este ticket cerrado: 404, incluso en V3.
               comprobar(intervenir(), 503, 'V3 protegida')
-              comprobar(listar(), 503, 'Listado V4 protegido en V3')
+              comprobar(listar(), 404, 'Tecnico ajeno no descubre ticket ni esquema V3')
+              cambiar(JEFE, 'JEFE')
+              comprobar(listar(), 503, 'JEFE detecta listado V4 no habilitado en V3')
+              cambiar(VIEJO, 'ASISTENTE')
+              comprobar(listar(), 503, 'Participante historico detecta esquema V4 pendiente')
+              cambiar(NUEVO, 'PRACTICANTE')
 
               subprocess.run([
                   'docker', 'exec', 'grocio-intervencion-v4-ci',
@@ -321,6 +327,14 @@ jobs:
 
               comprobar(listar(), 200, 'Tecnico consulta historial completo')
               assert [x['ciclo_atencion'] for x in listar().json()] == [1, 2]
+
+              cambiar(VIEJO, 'ASISTENTE')
+              comprobar(listar(), 200, 'Participante anterior conserva lectura de ambos ciclos')
+              assert [x['ciclo_atencion'] for x in listar().json()] == [1, 2]
+              cambiar(AJENO, 'ASISTENTE')
+              comprobar(listar(), 404, 'Tecnico sin participacion no lee historial V4')
+              cambiar(JEFE, 'JEFE')
+              comprobar(listar(), 200, 'JEFE conserva lectura completa V4')
 
               cambiar(REP, 'REPRESENTANTE')
               comprobar(listar(), 200, 'Representante del area consulta historial')

@@ -243,6 +243,43 @@ class Diagnostico112C(unittest.TestCase):
         self.actor = "JEFE"
         self.assertEqual(self.client.get(f"/api/incidencias/{ajena}").status_code, 200)
 
+    def test_listado_v4_oculta_ajeno_antes_de_comprobar_esquema(self):
+        id_ = self.ticket("Cerrado")
+        self.asignacion(id_, "ASISTENTE", finalizada=True)
+        ruta = f"/api/v4/incidencias/{id_}/intervenciones"
+        with patch("app.routes.v4_intervenciones.esquema_v4_disponible", return_value=False) as esquema:
+            self.actor = "PRACTICANTE"
+            self.assertEqual(self.client.get(ruta).status_code, 404)
+            esquema.assert_not_called()
+            for role in ("JEFE", "ASISTENTE"):
+                with self.subTest(role=role):
+                    self.actor = role
+                    response = self.client.get(ruta)
+                    self.assertEqual(response.status_code, 503, response.text)
+                    self.assertEqual(response.json()["detail"], "Esquema V4 no habilitado.")
+            self.assertEqual(esquema.call_count, 2)
+
+    def test_contexto_conserva_responsable_e_historico_y_oculta_ajeno(self):
+        id_ = self.ticket("En revisión")
+        self.asignacion(id_, "ASISTENTE")
+        ruta = f"/api/incidencias/{id_}/contexto-atencion"
+        with patch("app.routes.contexto_atencion.esquema_v4_disponible", return_value=False) as esquema:
+            self.actor = "PRACTICANTE"
+            self.assertEqual(self.client.get(ruta).status_code, 404)
+            esquema.assert_not_called()
+            self.actor = "ASISTENTE"
+            response = self.client.get(ruta)
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertTrue(response.json()["es_responsable"])
+            self.assertTrue(response.json()["puede_intervenir"])
+            self.asignacion(id_, "PRACTICANTE", finalizada=True)
+            self.actor = "PRACTICANTE"
+            historico = self.client.get(ruta)
+            self.assertEqual(historico.status_code, 200, historico.text)
+            self.assertFalse(historico.json()["es_responsable"])
+            self.assertFalse(historico.json()["puede_intervenir"])
+            self.assertFalse(historico.json()["puede_cerrar"])
+
     def test_cierre_preservado_distingue_autor_original_y_actor_actual(self):
         fecha = datetime(2026, 1, 2, 12, tzinfo=timezone.utc)
         datos = dict(fecha_cierre=fecha, cerrado_por_usuario_id=self.ids["ASISTENTE"], ciclo_actual=3)
