@@ -14,6 +14,8 @@ import RealAssignmentsPage from "./RealAssignmentsPage"
 import RealWork from "./RealWork"
 import RealReports from "./RealReports"
 import { Icon } from "./RealUI"
+import escudoGrocioPrado from "./assets/escudo-grocio-prado.png"
+import "./RealLogin.css"
 
 export type VistaReal = "dashboard" | "incidencias" | "asignaciones" | "atencion" | "usuarios" | "cuenta" | "registro" | "reportes"
 const titulos: Record<VistaReal, string> = {
@@ -202,20 +204,63 @@ export default function RealApp() {
   if (activando) return <main className="login-screen real-app"><section className="login-panel"><div className="login-copy"><h2>Activa tu cuenta institucional</h2><p>Establece una contraseña para acceder con tu correo.</p></div><form onSubmit={activarCuenta}><label>Nueva contraseña<input type="password" autoComplete="new-password" required minLength={12} value={contrasena} onChange={(e) => setContrasena(e.target.value)} disabled={cargando} /></label><label>Confirmar contraseña<input type="password" autoComplete="new-password" required minLength={12} value={confirmacion} onChange={(e) => setConfirmacion(e.target.value)} disabled={cargando} /></label>{mensaje && <div className="auth-error" role="alert">{mensaje}</div>}<button className="primary login-submit" disabled={cargando || !perfil}>{cargando ? "Verificando…" : "Activar cuenta"}</button><button type="button" className="outline" disabled={cargando} onClick={() => { limpiarSesion(); setMensaje("") }}>Volver al login</button></form></section></main>
 
   if (!sesion || !perfil) return (
-    <main className="login-screen real-app">
-      <section className="login-panel">
-        <div className="login-brand"><div className="crest large">TI</div><div><p>Municipalidad Distrital de Grocio Prado</p><h1>Soporte TI</h1></div></div>
-        <div className="login-copy"><h2>Bienvenido</h2><p>Inicia sesión con tu cuenta institucional para gestionar las incidencias de tu municipio.</p></div>
-        <form onSubmit={ingresar}>
-          <label>Correo electrónico<input type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} placeholder="correo@institucion.pe" autoComplete="username" required disabled={cargando} /></label>
-          <label>Contraseña<div className="password-field"><input aria-label="Contraseña" type={mostrarClave ? "text" : "password"} value={contrasena} onChange={(e) => setContrasena(e.target.value)} autoComplete="current-password" required disabled={cargando} /><button type="button" onClick={() => setMostrarClave(!mostrarClave)}>{mostrarClave ? "Ocultar" : "Mostrar"}</button></div></label>
-          {mensaje && <div className="auth-error" role="alert">{mensaje}</div>}
-          <button type="submit" className="primary login-submit" disabled={cargando}>{cargando ? "Verificando acceso…" : "Iniciar sesión"}</button>
-        </form>
-        <button type="button" className="outline" onClick={() => { setSolicitandoEnlace(true); setMensaje("") }}>Olvidé mi contraseña</button>
-        {!recuperacionHabilitada && <p className="help">Recuperación por correo pendiente de configurar y validar con el operador.</p>}
-        <p className="login-foot">Municipalidad Distrital de Grocio Prado · Acceso institucional</p>
-      </section>
+    <main className="login-screen real-app real-access">
+      <header className="real-access-brand">
+        <div className="real-access-scene" aria-hidden="true">
+          <div className="real-access-photo" />
+          <div className="real-access-wave" />
+        </div>
+        <div className="real-access-brand-content">
+          <div className="real-access-municipio">
+            <span className="real-access-seal" aria-hidden="true"><img src={escudoGrocioPrado} alt="" /></span>
+            <div>Municipalidad Distrital de<strong>Grocio Prado</strong></div>
+          </div>
+          <p className="real-access-chip"><Icon name="login-monitor" /> Soporte TI</p>
+          <h1>Sistema de Gestión<br className="real-access-title-break" /> de Incidencias</h1>
+          <p className="real-access-intro">Registro, seguimiento y atención de solicitudes de soporte tecnológico.</p>
+          <ul className="real-access-features">
+            <li><span><Icon name="login-ticket" /></span>Registra<br /> incidencias</li>
+            <li><span><Icon name="users" /></span>Seguimiento<br /> de atención</li>
+            <li><span><Icon name="login-bars" /></span>Reportes<br /> e indicadores</li>
+          </ul>
+        </div>
+      </header>
+      <div className="real-access-card-area">
+        <section className="login-panel" aria-labelledby="real-access-title">
+          <div className="login-copy">
+            <div className="real-access-support-icon" aria-hidden="true">
+              <span className="real-access-laptop"><Icon name="login-headset" /></span>
+            </div>
+            <h2 id="real-access-title">Bienvenido</h2>
+            <p>Ingresa con tu cuenta institucional para acceder al sistema de soporte TI.</p>
+          </div>
+          <form onSubmit={ingresar}>
+            <label htmlFor="real-access-email"><Icon name="login-mail" /> Correo electrónico</label>
+            <div className="real-access-field">
+              <span aria-hidden="true"><Icon name="login-mail" /></span>
+              <input id="real-access-email" type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} placeholder="correo@municipalidad.gob.pe" autoComplete="username" required disabled={cargando} />
+            </div>
+            <label htmlFor="real-access-password"><Icon name="login-lock" /> Contraseña</label>
+            <div className="password-field real-access-field">
+              <span aria-hidden="true"><Icon name="login-lock" /></span>
+              <input id="real-access-password" type={mostrarClave ? "text" : "password"} value={contrasena} onChange={(e) => setContrasena(e.target.value)} placeholder="Ingresa tu contraseña" autoComplete="current-password" required disabled={cargando} />
+              <button type="button" aria-label={mostrarClave ? "Ocultar contraseña" : "Mostrar contraseña"} aria-controls="real-access-password" onClick={() => setMostrarClave(!mostrarClave)}>
+                <Icon name={mostrarClave ? "login-eye" : "login-eye-off"} />
+              </button>
+            </div>
+            <div className="real-access-assistance">
+              <button type="button" className="text-button" aria-describedby={recuperacionHabilitada ? undefined : "real-access-recovery-note"} onClick={() => { setSolicitandoEnlace(true); setMensaje("") }}>¿Olvidaste tu contraseña?</button>
+              {!recuperacionHabilitada && <span id="real-access-recovery-note" className="real-access-visually-hidden">Recuperación por correo pendiente de configurar y validar con el operador.</span>}
+            </div>
+            {mensaje && <div className="auth-error" role="alert">{mensaje}</div>}
+            <button type="submit" className="primary login-submit" disabled={cargando}><Icon name="login-enter" /> {cargando ? "Verificando acceso…" : "Iniciar sesión"}</button>
+          </form>
+          <footer className="real-access-note">
+            <Icon name="login-shield" />
+            <p>Acceso exclusivo para personal autorizado<br className="real-access-title-break" /> de la Municipalidad Distrital de Grocio Prado.</p>
+          </footer>
+        </section>
+      </div>
     </main>
   )
 

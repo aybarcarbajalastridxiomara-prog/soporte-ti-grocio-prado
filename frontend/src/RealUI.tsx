@@ -13,6 +13,16 @@ export function Icon({ name }: { name: string }) {
     refresh: "M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 14 6M4 12a8 8 0 0 0 14 6",
     reports: "M4 3h16v18H4zM8 15v3M12 11v7M16 7v11",
     download: "M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4",
+    "login-monitor": "M3 4h18v13H3zM1 21h22m-11-4v4",
+    "login-ticket": "m3 12 9-9h6v3a2 2 0 0 0 3 2v5l-9 9-3-3a2 2 0 0 0-3-3zm9-5 1.5 1.5m1.5 1.5 1.5 1.5",
+    "login-bars": "M2 13h4v8H2zm8-5h4v13h-4zm8-6h4v19h-4z",
+    "login-headset": "M3 13v-2a9 9 0 0 1 18 0v3m-18-2H2a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h3v-6H3Zm18 0h1a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-3v-6h2Zm0 6a4 4 0 0 1-4 4h-4",
+    "login-mail": "M3 5h18v14H3zM3 6l9 7 9-7",
+    "login-lock": "M6 10h12a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Zm2 0V7a4 4 0 1 1 8 0v3m-4 5v2",
+    "login-eye": "M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z",
+    "login-eye-off": "m3 3 18 18M10 6.2a11 11 0 0 1 2-.2c6.5 0 10 6 10 6a17 17 0 0 1-3.2 3.5M6 8.3A17 17 0 0 0 2 12s3.5 6 10 6c1.3 0 2.6-.3 3.7-.7M10 10a3 3 0 0 0 4 4",
+    "login-enter": "M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5M2 12h12m-5-5 5 5-5 5",
+    "login-shield": "M12 22S4 18 4 11V5l8-3 8 3v6c0 7-8 11-8 11Zm-4-10 3 3 5-6",
   }
   return <svg className="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={paths[name] || paths.clipboard} /></svg>
 }
