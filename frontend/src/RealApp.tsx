@@ -314,7 +314,6 @@ export default function RealApp() {
           <div className="top-actions"><span className="connection-label"><i />Acceso institucional</span><button className="avatar avatar-button" aria-label="Abrir mi cuenta" onClick={() => navegar("cuenta")}>{iniciales}</button></div>
         </header>
         <div className="page">
-          {vista === "dashboard" && !ticketSeleccionado && <p className="real-shell-greeting">¡Hola, {perfil.nombre_completo}!</p>}
           {mensaje && <div className="notice real-message" role="status">{mensaje}</div>}
           {!vistaPermitida ? <div className="card empty"><h2>Esta sección requiere otro rol</h2><button className="outline" onClick={() => navegar("dashboard")}>Volver al panel</button></div> : vista === "usuarios" && jefe ? <RealAdministration token={sesion.access_token} perfil={perfil} /> : vista === "cuenta" ? (
             <RealAccount token={sesion.access_token} perfil={perfil} actualizar={actualizar} cargando={cargando} alCambiarClave={() => { limpiarSesion(); setMensaje("Contraseña actualizada. Inicia sesión con tu nueva contraseña.") }} />

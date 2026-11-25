@@ -26,6 +26,8 @@ export function Icon({ name }: { name: string }) {
     "sidebar-power": "M12 2v9M7 5a9 9 0 1 0 10 0",
     "sidebar-wrench": "M21 3a6 6 0 0 1-7.4 8.6l-8 8a2 2 0 0 1-2.8-2.8l8-8A6 6 0 0 1 19 2l-4 4 3 3 4-4Z",
     "shell-home": "m2 11 10-9 10 9M5 9v12h5v-7h4v7h5V9",
+    "dashboard-filter": "M3 4h18l-7 8v6l-4 2v-8z",
+    "dashboard-trend": "m3 17 6-6 4 4 8-9m-5 0h5v5",
   }
   return <svg className="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={paths[name] || paths.clipboard} /></svg>
 }

@@ -90,7 +90,7 @@
 
 .real-access-municipio strong {
   display: block;
-  font-size: calc(42 * var(--access-unit));
+  font-size: calc(38 * var(--access-unit));
   line-height: 1;
   letter-spacing: -.025em;
 }
@@ -128,7 +128,7 @@
 
 .real-access-brand h1 {
   margin: 0 0 calc(15 * var(--access-unit));
-  font-size: calc(61 * var(--access-unit));
+  font-size: calc(55 * var(--access-unit));
   font-weight: 700;
   line-height: 1.075;
   letter-spacing: -.034em;
@@ -138,7 +138,7 @@
   max-width: calc(535 * var(--access-unit));
   margin: 0;
   color: #c7def4;
-  font-size: calc(28 * var(--access-unit));
+  font-size: calc(25 * var(--access-unit));
   line-height: 1.32;
   letter-spacing: -.014em;
 }
@@ -252,7 +252,7 @@
 
 .real-access .login-copy h2 {
   margin: 0 0 calc(8 * var(--access-unit));
-  font-size: calc(50 * var(--access-unit));
+  font-size: calc(44 * var(--access-unit));
   font-weight: 700;
   line-height: 1.14;
   letter-spacing: -.045em;
@@ -262,7 +262,7 @@
   max-width: 36ch;
   margin: 0 auto calc(33 * var(--access-unit));
   color: #4e6078;
-  font-size: calc(21 * var(--access-unit));
+  font-size: calc(19 * var(--access-unit));
   line-height: 1.36;
   letter-spacing: -.014em;
 }
@@ -273,7 +273,7 @@
   gap: calc(9 * var(--access-unit));
   margin: calc(20 * var(--access-unit)) 0 calc(9 * var(--access-unit));
   color: #111f34;
-  font-size: calc(21 * var(--access-unit));
+  font-size: max(15px, 19 * var(--access-unit));
   line-height: 1.25;
   letter-spacing: -.02em;
 }
@@ -351,7 +351,7 @@
   border-radius: calc(16 * var(--access-unit));
   background: linear-gradient(102deg, #168bcb, #075c9e 75%, #034578);
   color: #fff;
-  font-size: max(16px, 25 * var(--access-unit));
+  font-size: max(16px, 22 * var(--access-unit));
   font-weight: 700;
   letter-spacing: -.017em;
 }
@@ -393,7 +393,7 @@
   .real-access-wave { height: 14%; }
   .real-access-brand-content { max-width: 640px; margin: 0 auto; padding: 24px 24px 45px; }
   .real-access-municipio { gap: calc(28 * var(--access-unit)); margin: 0 0 20px; }
-  .real-access-brand h1 { font-size: clamp(32px, 7vw, 48px); }
+  .real-access-brand h1 { font-size: clamp(28px, 6.5vw, 44px); }
   .real-access-intro { max-width: 33ch; font-size: clamp(16px, 3.2vw, 20px); }
   .real-access-features { max-width: 450px; margin-top: 22px; }
   .real-access-card-area { width: min(100%, 600px); margin-inline: auto; padding: 23px 24px 30px; }
