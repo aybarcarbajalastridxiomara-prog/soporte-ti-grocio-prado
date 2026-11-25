@@ -142,7 +142,7 @@ export default function RealVerification({ token, ticketId, onActualizada }: Pro
       (resultado === "Observación" && observaciones.trim().length >= 5))
 
   return (
-    <section style={panel} aria-label="Conformidad y observaciones">
+    <section className="form-workflow" style={panel} aria-label="Conformidad y observaciones">
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
         <div>
           <h3 style={{ margin: "0 0 5px", color: "#183958" }}>Verificación del área solicitante</h3>

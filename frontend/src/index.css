@@ -511,3 +511,235 @@
     display: none;
   }
 }
+
+/* Formularios institucionales. La clase forms-refresh activa esta capa completa. */
+.real-app.forms-refresh {
+  --form-ink: #122b50;
+  --form-accent: #0758b5;
+  --form-edge: #a8bdd9;
+  --form-frame: #d3e3f7;
+  --form-heading: linear-gradient(105deg, #edf5ff, #dceafb);
+  --form-hero:
+    radial-gradient(ellipse 72% 116% at 95% 165%, #87c5f8 49%, transparent 50%),
+    radial-gradient(ellipse 62% 105% at 80% 145%, #aed6fa 51%, transparent 52%),
+    radial-gradient(ellipse 65% 100% at 104% 145%, #c3e1fd 66%, transparent 67%),
+    linear-gradient(105deg, #f1f7ff, #dceefc);
+}
+
+.real-app.forms-refresh .real-register { max-width: none; }
+.real-app.forms-refresh :is(
+  .real-register .detail-header,
+  .page-title-row:has(+ .real-account-grid),
+  .real-admin .page-title-row,
+  .real-reports .page-title-row
+) {
+  align-items: center;
+  gap: 12px;
+  padding: clamp(12px, 2vw, 20px);
+  border: 1px solid var(--form-frame);
+  border-radius: 14px;
+  background: var(--form-hero);
+}
+
+.real-app.forms-refresh .real-register .detail-header {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.real-app.forms-refresh .real-register .detail-header > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.real-app.forms-refresh :is(.real-register .detail-header, .real-admin .page-title-row, .real-reports .page-title-row, .page-title-row:has(+ .real-account-grid)) h2 {
+  color: var(--form-ink);
+}
+
+.real-app .register-header-icon,
+.real-app .register-section-icon { display: none; }
+
+.real-app.forms-refresh .register-header-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 2px solid var(--form-accent);
+  border-radius: 11px;
+  color: var(--form-accent);
+}
+
+.real-app.forms-refresh .register-header-icon .icon { width: 26px; height: 26px; }
+
+.real-app.forms-refresh .register-form {
+  display: grid;
+  gap: 13px;
+}
+
+.real-app.forms-refresh :is(
+  .real-register fieldset,
+  .real-form.card,
+  .report-filter-card,
+  .real-analysis-filters,
+  .real-admin .modal,
+  .login-panel
+) {
+  border: 1px solid var(--form-frame);
+  border-radius: 14px;
+  background: #fdfefe;
+  box-shadow: 0 2px 5px #173d7910;
+}
+
+.real-app.forms-refresh .form-workflow {
+  border-color: var(--form-frame) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 2px 5px #173d7910;
+}
+
+.real-app.forms-refresh .real-register fieldset {
+  --register-padding: clamp(12px, 1.65vw, 19px);
+  margin: 0;
+  padding: 12px var(--register-padding) 14px;
+  background: var(--form-heading) 0 0 / 100% 23px no-repeat, #fdfefe;
+}
+
+.real-app.forms-refresh .real-register legend {
+  width: calc(100% + 2 * var(--register-padding));
+  margin: 0 calc(-1 * var(--register-padding));
+  padding: 0;
+  background: var(--form-heading);
+  border-radius: 13px 13px 0 0;
+  color: var(--form-ink);
+  font-size: 14px;
+  font-weight: 700;
+  float: left;
+}
+
+.real-app.forms-refresh .real-register legend + * { clear: both; }
+
+.real-app.forms-refresh .register-section-icon { display: inline-flex; color: var(--form-accent); }
+
+.real-app.forms-refresh .register-legend-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px var(--register-padding) 9px;
+}
+
+.real-app.forms-refresh :is(
+  .real-form.card > h3,
+  .real-assignment > .section-head,
+  .report-filter-card > .section-head,
+  .form-workflow > div:first-child,
+  .form-workflow form > h4,
+  .real-admin .modal > h2,
+  .login-panel > h2,
+  .login-panel > .login-copy
+) {
+  padding: 9px 13px;
+  border-radius: 8px;
+  background: var(--form-heading);
+  color: var(--form-ink);
+}
+
+.real-app.forms-refresh :is(
+  .real-form.card > h3,
+  .form-workflow form > h4,
+  .real-analysis-filters h3
+) { font-size: 14px; }
+
+.real-app.forms-refresh :is(.real-assignment, .report-filter-card) > .section-head {
+  margin-bottom: 12px;
+}
+
+.real-app.forms-refresh :is(.real-form, .real-admin .modal, .report-filters, .form-workflow, .login-panel) label {
+  color: var(--form-ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.real-app.forms-refresh .real-form label { margin: 7px 0; }
+
+.real-app.forms-refresh :is(
+  .real-form,
+  .real-analysis-filters,
+  .real-admin .modal,
+  .report-filters,
+  .form-workflow,
+  .login-panel
+) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea) {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  max-width: 100%;
+  border-color: var(--form-edge);
+  border-radius: 8px;
+  background-color: #fff;
+  box-shadow: none;
+  color: var(--form-ink);
+  font-size: 13px;
+}
+
+.real-app.forms-refresh .form-workflow form :is(select, textarea, input[type="number"]) {
+  /* Estos controles tienen un borde inline en el diseño original. */
+  border-color: var(--form-edge) !important;
+}
+
+.real-app.forms-refresh :is(.real-form, .real-admin .modal, .form-workflow) :is(input[readonly], input:disabled:not([type="checkbox"]), select:disabled, textarea:disabled) {
+  background-color: #edf3fa;
+  color: #405673;
+}
+
+.real-app.forms-refresh :is(.real-form, .form-workflow) textarea { min-height: 76px; }
+
+.real-app.forms-refresh .real-form .form-row { gap: 12px; }
+.real-app.forms-refresh .real-register .form-row { margin: 0; }
+.real-app.forms-refresh .real-register .help { color: #3c5576; }
+.real-app.forms-refresh .real-form .notice { background: #e8f3ff; color: #234e7b; }
+
+.real-app.forms-refresh .real-register .attachment-pending {
+  justify-items: center;
+  text-align: center;
+  padding: 15px;
+  border-color: #7f9ec3;
+  background: #f0f6fd;
+  color: #173d71;
+}
+
+.real-app.forms-refresh .attachment-pending .icon { width: 25px; height: 25px; }
+.real-app.forms-refresh .real-register .modal-actions { margin: 0; justify-content: flex-end; }
+
+.real-app.forms-refresh :is(.real-form, .real-analysis-filters, .real-admin .modal, .report-filter-card, .form-workflow, .login-panel) button:is(.primary, .outline) {
+  min-height: 38px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.real-app.forms-refresh :is(.real-form, .real-analysis-filters, .real-admin .modal, .report-filter-card, .form-workflow, .login-panel) button.primary {
+  background: var(--form-accent);
+  border-color: var(--form-accent);
+}
+
+.real-app.forms-refresh :is(.real-form, .form-workflow, .real-admin .modal) :is(.real-actions, .modal-actions) > button { margin-top: 0; }
+
+@media (max-width: 660px) {
+  .real-app.forms-refresh :is(.real-form, .real-admin .modal) .form-row,
+  .real-app.forms-refresh .report-filters {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .real-app.forms-refresh .real-register .form-row-three {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .real-app.forms-refresh .register-header-icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .real-app.forms-refresh .register-header-icon .icon { width: 22px; height: 22px; }
+  .real-app.forms-refresh .real-register .modal-actions > button { flex: 1 1 auto; }
+}
