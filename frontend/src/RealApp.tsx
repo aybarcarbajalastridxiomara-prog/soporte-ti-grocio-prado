@@ -42,6 +42,7 @@ export default function RealApp() {
   const [menu, setMenu] = useState(false)
   const [actualizado, setActualizado] = useState("")
   const [activando, setActivando] = useState(false)
+  const [cuentaActivada, setCuentaActivada] = useState(false)
   const [confirmacion, setConfirmacion] = useState("")
   const [recuperando, setRecuperando] = useState(false)
   const [solicitandoEnlace, setSolicitandoEnlace] = useState(false)
@@ -133,7 +134,7 @@ export default function RealApp() {
   async function ingresar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault()
     if (cargando) return
-    setCargando(true); setMensaje("")
+    setCargando(true); setMensaje(""); setCuentaActivada(false)
     const vigente = generacion.current
     try {
       const nueva = await iniciarSesionReal(correo, contrasena)
@@ -181,8 +182,9 @@ export default function RealApp() {
     setCargando(true); setMensaje("")
     try {
       await establecerClaveInvitada(sesion.access_token, contrasena)
-      setContrasena(""); setConfirmacion(""); setActivando(false)
-      await cargarDatos(sesion.access_token)
+      await cerrarSesionReal(sesion.access_token).catch(() => undefined)
+      limpiarSesion()
+      setCuentaActivada(true)
     } catch (error) { setMensaje(errorTexto(error)) }
     finally { setCargando(false) }
   }
@@ -254,6 +256,7 @@ export default function RealApp() {
               <button type="button" className="text-button" aria-describedby={recuperacionHabilitada ? undefined : "real-access-recovery-note"} onClick={() => { setSolicitandoEnlace(true); setMensaje("") }}>¿Olvidaste tu contraseña?</button>
               {!recuperacionHabilitada && <span id="real-access-recovery-note" className="real-access-visually-hidden">Recuperación por correo pendiente de configurar y validar con el operador.</span>}
             </div>
+            {cuentaActivada && <p role="status">Cuenta activada. Ya puedes iniciar sesión.</p>}
             {mensaje && <div className="auth-error" role="alert">{mensaje}</div>}
             <button type="submit" className="primary login-submit" disabled={cargando}><Icon name="login-enter" /> {cargando ? "Verificando acceso…" : "Iniciar sesión"}</button>
           </form>
