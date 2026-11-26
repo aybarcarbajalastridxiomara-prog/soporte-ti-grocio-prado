@@ -1,4 +1,5 @@
 
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 from uuid import UUID
 
@@ -11,8 +12,8 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_user, require_roles
 from app.config import get_settings
 from app.db import get_db
-from app.models import Area, Usuario, AuditoriaAdministrativa
-from app.supabase_admin import invitar_en_supabase
+from app.models import Area, Asignacion, Usuario, AuditoriaAdministrativa
+from app.supabase_admin import invitar_en_supabase, recuperar_en_supabase
 
 
 router = APIRouter(
@@ -71,6 +72,17 @@ class AreaLectura(BaseModel):
     id: UUID
     nombre: str
     activo: bool
+
+
+class PerfilAdministrado(MiPerfil):
+    archivado: bool = False
+    correo: str | None = None
+    activacion: Literal["ACTIVADA", "PENDIENTE", "DESCONOCIDA"] = "DESCONOCIDA"
+
+
+class AccionAdministrativa(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    accion: Literal["habilitar", "deshabilitar", "archivar", "restaurar", "eliminar", "reenviar", "recuperar"]
 
 
 class PerfilActualizar(BaseModel):
@@ -166,6 +178,25 @@ def permisos_administrativos_verificados(db: Session) -> bool:
     """)).scalar_one())
 
 
+def gestion_ampliada_disponible(db: Session) -> bool:
+    if db.get_bind().dialect.name != "postgresql":
+        return False
+    return bool(db.scalar(text("""
+        SELECT COALESCE(has_function_privilege(
+            to_regprocedure('public.estado_auth_perfiles(uuid)'), 'EXECUTE'), false)
+        AND COALESCE(has_function_privilege(
+            to_regprocedure('public.eliminar_perfil_sin_historial(uuid,uuid)'), 'EXECUTE'), false)
+    """)))
+
+
+def directorio_auth(db: Session, jefe: Usuario):
+    return db.execute(text("SELECT * FROM public.estado_auth_perfiles(:jefe)"), {"jefe": jefe.id}).mappings()
+
+
+def perfil_archivado(db: Session, usuario_id: UUID) -> bool:
+    return bool(db.scalar(text("SELECT archivado FROM public.usuarios WHERE id = :id"), {"id": usuario_id}))
+
+
 @router.get("/administracion/configuracion")
 def consultar_configuracion_administrativa(
     _jefe: Usuario = Depends(require_roles("JEFE")), db: Session = Depends(get_db),
@@ -182,15 +213,30 @@ def consultar_configuracion_administrativa(
     configuracion["permisos_verificados"] = verificados
     configuracion["edicion_habilitada"] = configuracion["edicion_habilitada"] and verificados
     configuracion["invitaciones_habilitadas"] = configuracion["invitaciones_habilitadas"] and verificados
+    configuracion["gestion_ampliada"] = gestion_ampliada_disponible(db)
     return configuracion
 
 
-@router.get("/usuarios", response_model=list[MiPerfil])
+@router.get("/usuarios", response_model=list[PerfilAdministrado])
 def listar_usuarios(
-    _jefe: Usuario = Depends(require_roles("JEFE")),
+    jefe: Usuario = Depends(require_roles("JEFE")),
     db: Session = Depends(get_db),
 ):
-    return db.scalars(select(Usuario).order_by(Usuario.nombre_completo, Usuario.id)).all()
+    perfiles = [PerfilAdministrado.model_validate(usuario) for usuario in
+                db.scalars(select(Usuario).order_by(Usuario.nombre_completo, Usuario.id))]
+    if gestion_ampliada_disponible(db):
+        auth = {fila["id"]: fila for fila in directorio_auth(db, jefe)}
+        archivados = set(db.scalars(text("SELECT id FROM public.usuarios WHERE archivado")))
+        for perfil in perfiles:
+            perfil.archivado = perfil.id in archivados
+            cuenta = auth.get(perfil.id)
+            if cuenta:
+                perfil.correo = cuenta["correo"]
+                if cuenta["activado"]:
+                    perfil.activacion = "ACTIVADA"
+                elif cuenta["invitado"]:
+                    perfil.activacion = "PENDIENTE"
+    return perfiles
 
 
 @router.get("/areas", response_model=list[AreaLectura])
@@ -209,7 +255,33 @@ def comprobar_escritura(db: Session):
 
 
 def datos_auditables(usuario):
-    return {"rol": usuario.rol, "area_id": str(usuario.area_id), "habilitado": usuario.habilitado}
+    return {"usuario": usuario.usuario, "rol": usuario.rol, "area_id": str(usuario.area_id), "habilitado": usuario.habilitado}
+
+
+def comprobar_asignaciones_activas(db: Session, usuario_id: UUID):
+    if db.scalar(select(Asignacion.id).where(
+        Asignacion.tecnico_id == usuario_id, Asignacion.fecha_fin.is_(None),
+    ).limit(1)) is not None:
+        raise HTTPException(409, "Reasigna o finaliza las incidencias activas antes de retirar el acceso.")
+
+
+def bloquear_perfil(db: Session, jefe: Usuario, usuario_id: UUID) -> Usuario:
+    bloquear_jefes(db, jefe)
+    usuario = db.scalar(select(Usuario).where(Usuario.id == usuario_id).with_for_update())
+    if usuario is None:
+        raise HTTPException(404, "Usuario no disponible.")
+    return usuario
+
+
+def proteger_jefatura(db: Session, jefe: Usuario, usuario: Usuario):
+    if usuario.rol != "JEFE" or not usuario.habilitado or not gestion_ampliada_disponible(db):
+        return
+    activos = {fila["id"] for fila in directorio_auth(db, jefe) if fila["activado"]}
+    restantes = db.scalars(select(Usuario.id).where(
+        Usuario.rol == "JEFE", Usuario.habilitado.is_(True), Usuario.id != usuario.id,
+    ))
+    if not any(identidad in activos for identidad in restantes):
+        raise HTTPException(409, "Debe quedar al menos un JEFE habilitado con su cuenta activada.")
 
 
 @router.get("/administracion/historial")
@@ -255,14 +327,19 @@ def actualizar_usuario(
     db: Session = Depends(get_db),
 ):
     comprobar_escritura(db)
-    bloquear_jefes(db, jefe)
-    usuario = db.scalar(select(Usuario).where(Usuario.id == usuario_id).with_for_update())
-    if usuario is None:
-        raise HTTPException(404, "Usuario no disponible.")
+    usuario = bloquear_perfil(db, jefe, usuario_id)
     if usuario_id == jefe.id and (datos.habilitado is False or datos.rol not in (None, "JEFE")):
         raise HTTPException(409, "No puedes deshabilitar tu propio acceso ni retirar tu rol de JEFE.")
     if datos.area_id is not None:
         validar_area(db, datos.area_id)
+    if datos.habilitado is True and gestion_ampliada_disponible(db) and perfil_archivado(db, usuario.id):
+        raise HTTPException(409, "Restaura primero el perfil archivado.")
+    if datos.habilitado is False or datos.rol not in (None, "JEFE"):
+        proteger_jefatura(db, jefe, usuario)
+    if datos.habilitado is False or (
+        usuario.rol in ("ASISTENTE", "PRACTICANTE") and datos.rol in ("JEFE", "REPRESENTANTE")
+    ):
+        comprobar_asignaciones_activas(db, usuario.id)
     anterior = datos_auditables(usuario)
     try:
         for campo, valor in datos.model_dump(exclude_unset=True).items():
@@ -297,7 +374,12 @@ def invitar_usuario(
     validar_cupo_antes_de_invitar(db, datos)
     if db.scalar(select(Usuario.id).where(Usuario.usuario == datos.usuario)):
         raise HTTPException(409, "El nombre de usuario ya está registrado.")
-    # Auth crea la cuenta y gestiona el correo. Nunca se recibe una contraseña.
+    if gestion_ampliada_disponible(db) and any(
+        fila["correo"] and fila["correo"].casefold() == datos.correo.casefold()
+        for fila in directorio_auth(db, jefe)
+    ):
+        raise HTTPException(409, "Ese correo ya tiene un perfil. Usa las acciones del directorio.")
+    # Auth valida la unicidad del correo y realiza el envío por su SMTP.
     invitado = invitar_en_supabase(datos.correo)
     try:
         identidad = UUID(invitado["id"])
@@ -318,3 +400,120 @@ def invitar_usuario(
         # La operación externa no forma parte de la transacción PostgreSQL.
         # La cuenta sin perfil continúa sin acceso por get_current_user.
         raise HTTPException(503, "Supabase aceptó la invitación, pero no se guardó el perfil. La cuenta no tiene acceso nuevo; el operador debe reconciliarla antes de reintentar.") from None
+
+
+def reenviar_acceso(db: Session, jefe: Usuario, usuario: Usuario, accion: str) -> dict:
+    configuracion = estado_administracion()
+    if not configuracion["invitaciones_habilitadas"]:
+        raise HTTPException(503, " ".join(configuracion["motivos"]))
+    cuenta = next((fila for fila in directorio_auth(db, jefe) if fila["id"] == usuario.id), None)
+    if not cuenta or not cuenta["correo"]:
+        raise HTTPException(409, "El perfil no tiene un correo de Auth disponible.")
+    activado = cuenta["activado"]
+    if accion == "reenviar" and (activado or not cuenta["invitado"]):
+        raise HTTPException(409, "Este perfil no tiene una invitación pendiente. Actualiza el directorio.")
+    if accion == "recuperar" and not activado:
+        raise HTTPException(409, "La cuenta todavía no está activada. Actualiza el directorio.")
+
+    ahora = datetime.now(timezone.utc)
+    intentos_recientes = select(AuditoriaAdministrativa.id).where(
+        AuditoriaAdministrativa.usuario_id == usuario.id,
+        AuditoriaAdministrativa.accion.in_(("SOLICITAR_REENVIO", "SOLICITAR_RECUPERACION")),
+    )
+    limite_horario = db.scalar(select(func.count()).select_from(intentos_recientes.where(
+        AuditoriaAdministrativa.fecha_registro > ahora - timedelta(hours=1),
+    ).limit(3).subquery()))
+    intervalo_minimo = db.scalar(intentos_recientes.where(
+        AuditoriaAdministrativa.fecha_registro > ahora - timedelta(seconds=60),
+    ).limit(1))
+    if limite_horario >= 3 or intervalo_minimo:
+        raise HTTPException(429, "Espera al menos 60 segundos entre envíos. Se permiten hasta tres por hora.")
+    invitacion_reciente = db.scalar(select(Usuario.id).where(
+        Usuario.id == usuario.id, Usuario.fecha_creacion > ahora - timedelta(seconds=60),
+    ))
+    if accion == "reenviar" and invitacion_reciente:
+        raise HTTPException(429, "Espera 60 segundos desde la invitación original.")
+
+    usuario_id, jefe_id = usuario.id, jefe.id
+    db.add(AuditoriaAdministrativa(
+        actor_id=jefe_id, usuario_id=usuario_id,
+        accion="SOLICITAR_REENVIO" if accion == "reenviar" else "SOLICITAR_RECUPERACION",
+        anterior={}, nuevo={},
+    ))
+    # Reserva persistente incluso ante un error o una respuesta incierta del proveedor.
+    db.commit()
+    usuario = bloquear_perfil(db, jefe, usuario_id)
+    if perfil_archivado(db, usuario.id):
+        raise HTTPException(409, "El perfil fue archivado. Actualiza el directorio.")
+    vigente = next((fila for fila in directorio_auth(db, jefe) if fila["id"] == usuario_id), None)
+    if vigente != cuenta:
+        raise HTTPException(409, "El estado de la cuenta cambió. Actualiza el directorio.")
+
+    if accion == "recuperar" or cuenta["confirmado"]:
+        # Un invitado que abrió el primer enlace puede haber confirmado su correo
+        # sin establecer su contraseña. Auth rechaza un nuevo /invite en ese caso.
+        recuperar_en_supabase(cuenta["correo"])
+    else:
+        respuesta = invitar_en_supabase(cuenta["correo"])
+        if respuesta.get("id") != str(usuario_id):
+            raise HTTPException(502, "Supabase no confirmó el reenvío para el perfil esperado.")
+    return {"mensaje": "Supabase aceptó el envío al correo registrado."}
+
+
+@router.post("/usuarios/{usuario_id}/acciones")
+def administrar_usuario(
+    usuario_id: UUID, datos: AccionAdministrativa,
+    jefe: Usuario = Depends(require_roles("JEFE")), db: Session = Depends(get_db),
+):
+    if not gestion_ampliada_disponible(db):
+        if datos.accion in ("habilitar", "deshabilitar"):
+            habilitado = datos.accion == "habilitar"
+            actualizar_usuario(usuario_id, PerfilActualizar(habilitado=habilitado), jefe, db)
+            return {"mensaje": "Perfil habilitado." if habilitado else "Perfil deshabilitado."}
+        raise HTTPException(503, "Estas acciones requieren la migración de gestión de usuarios.")
+    comprobar_escritura(db)
+    usuario = bloquear_perfil(db, jefe, usuario_id)
+    archivado = perfil_archivado(db, usuario_id)
+    accion = datos.accion
+    if accion in ("reenviar", "recuperar"):
+        if archivado:
+            raise HTTPException(409, "Restaura el perfil antes de enviar un enlace de acceso.")
+        return reenviar_acceso(db, jefe, usuario, accion)
+    if usuario_id == jefe.id:
+        raise HTTPException(409, "No puedes cambiar el acceso ni retirar tu propio perfil.")
+    if archivado != (accion in ("restaurar", "eliminar")):
+        raise HTTPException(409, "La acción no corresponde al estado del perfil. Actualiza el directorio.")
+    if accion in ("habilitar", "deshabilitar") and usuario.habilitado == (accion == "habilitar"):
+        raise HTTPException(409, "El perfil ya se encuentra en ese estado.")
+    if accion in ("deshabilitar", "archivar", "eliminar"):
+        comprobar_asignaciones_activas(db, usuario_id)
+        proteger_jefatura(db, jefe, usuario)
+
+    try:
+        if accion == "eliminar":
+            db.execute(text("SELECT public.eliminar_perfil_sin_historial(:jefe, :id)"),
+                       {"jefe": jefe.id, "id": usuario_id})
+        else:
+            anterior = {**datos_auditables(usuario), "archivado": archivado}
+            habilitado_nuevo = accion == "habilitar"
+            archivado_nuevo = accion == "archivar"
+            db.execute(text("UPDATE public.usuarios SET archivado = :archivado, habilitado = :habilitado WHERE id = :id"),
+                       {"archivado": archivado_nuevo, "habilitado": habilitado_nuevo, "id": usuario_id})
+            db.add(AuditoriaAdministrativa(
+                actor_id=jefe.id, usuario_id=usuario_id, accion=f"{accion.upper()}_PERFIL",
+                anterior=anterior, nuevo={**anterior, "habilitado": habilitado_nuevo, "archivado": archivado_nuevo},
+            ))
+        db.commit()
+    except SQLAlchemyError as error:
+        db.rollback()
+        codigo = getattr(getattr(error, "orig", None), "sqlstate", None)
+        if accion == "eliminar" and codigo == "23503":
+            raise HTTPException(409, "El perfil tiene dependencias históricas. Consérvalo archivado.") from None
+        if codigo == "P0001":
+            raise HTTPException(409, "El área alcanzó el cupo autorizado de representantes.") from None
+        raise HTTPException(503, "No se pudo completar la acción administrativa.") from None
+    return {"mensaje": {
+        "habilitar": "Perfil habilitado.", "deshabilitar": "Perfil deshabilitado.",
+        "archivar": "Perfil archivado.", "restaurar": "Perfil restaurado. Su acceso sigue deshabilitado.",
+        "eliminar": "Perfil y cuenta eliminados.",
+    }[accion]}

@@ -2,7 +2,7 @@
 import os
 import unittest
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -123,6 +123,42 @@ class Preentrega111A(unittest.TestCase):
         self.assertEqual(self.client.patch(f"/api/usuarios/{target}", json={"usuario": "jefe"}).status_code, 409)
         for body in ({"habilitado": False}, {"rol": "REPRESENTANTE"}):
             self.assertEqual(self.client.patch(f'/api/usuarios/{self.ids["JEFE"]}', json=body).status_code, 409)
+
+    def test_menu_preserva_edicion_y_bloquea_retiro_con_asignacion_activa(self):
+        tecnico = self.ids["ASISTENTE"]
+        ruta = f"/api/usuarios/{tecnico}/acciones"
+        with Session(self.engine) as db:
+            db.add(Asignacion(id=uuid4(), incidencia_id=uuid4(), tecnico_id=tecnico,
+                asignado_por_id=self.ids["JEFE"], origen_asignacion="JEFATURA",
+                fecha_asignacion=datetime.now(timezone.utc)))
+            db.commit()
+        self.assertEqual(self.client.post(ruta, json={"accion": "deshabilitar"}).status_code, 409)
+        self.assertEqual(self.client.post(ruta, json={"accion": "archivar"}).status_code, 503)
+        self.actor = "ASISTENTE"
+        self.assertEqual(self.client.post(ruta, json={"accion": "eliminar"}).status_code, 403)
+
+    def test_reenvio_reutiliza_correo_y_limita_intentos_tras_error(self):
+        tecnico = self.ids["ASISTENTE"]
+        ruta = f"/api/usuarios/{tecnico}/acciones"
+        with Session(self.engine) as db:
+            usuario = db.get(Usuario, tecnico)
+            usuario.habilitado = False
+            usuario.fecha_creacion = datetime.now(timezone.utc) - timedelta(days=1)
+            db.commit()
+        cuenta = {"id": tecnico, "correo": "tecnico@example.test", "activado": False,
+                  "confirmado": True, "invitado": True}
+        prefijo = "app.routes.usuarios."
+        with patch(prefijo + "gestion_ampliada_disponible", return_value=True), \
+             patch(prefijo + "perfil_archivado", return_value=False), \
+             patch(prefijo + "directorio_auth", return_value=[cuenta]), \
+             patch(prefijo + "recuperar_en_supabase") as enviar:
+            from fastapi import HTTPException
+            enviar.side_effect = HTTPException(502, "Respuesta incierta")
+            self.assertEqual(self.client.post(ruta, json={"accion": "reenviar"}).status_code, 502)
+            self.assertEqual(self.client.post(ruta, json={"accion": "reenviar"}).status_code, 429)
+            enviar.assert_called_once_with(cuenta["correo"])
+        with Session(self.engine) as db:
+            self.assertFalse(db.get(Usuario, tecnico).habilitado)
 
     def test_permiso_db_no_verificado_bloquea_edicion_e_invitacion(self):
         with patch("app.routes.usuarios.permisos_administrativos_verificados", return_value=False), patch("app.routes.usuarios.invitar_en_supabase") as externo:

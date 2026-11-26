@@ -1,14 +1,91 @@
-import { useEffect, useState, type FormEvent } from "react"
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react"
 import { solicitarAPI, type PerfilReal, type Rol } from "./api"
 import { Badge, Icon } from "./RealUI"
 
 type Area = { id: string; nombre: string; activo: boolean }
-type Configuracion = { permisos_verificados?: boolean; edicion_habilitada: boolean; invitaciones_habilitadas: boolean; motivos: string[] }
+type Configuracion = { permisos_verificados?: boolean; edicion_habilitada: boolean; invitaciones_habilitadas: boolean; gestion_ampliada?: boolean; motivos: string[] }
+type Persona = PerfilReal & { archivado?: boolean; correo?: string | null; activacion?: "ACTIVADA" | "PENDIENTE" | "DESCONOCIDA" }
+const acciones = {
+  reenviar: "Reenviar invitación", recuperar: "Enviar recuperación de contraseña",
+  habilitar: "Habilitar", deshabilitar: "Deshabilitar", archivar: "Archivar",
+  restaurar: "Restaurar", eliminar: "Eliminar definitivamente",
+}
+type Accion = keyof typeof acciones
+const advertencias: Record<Accion, string> = {
+  reenviar: "Se enviará un nuevo enlace al correo registrado.",
+  recuperar: "Se enviará un enlace de recuperación al correo registrado.",
+  habilitar: "Se permitirá el acceso al sistema según el rol actual.",
+  deshabilitar: "Se bloqueará su acceso y dejará de estar disponible para nuevas asignaciones.",
+  archivar: "Se retirará su acceso y se ocultará del directorio predeterminado. El historial se conserva.",
+  restaurar: "El perfil volverá al directorio y su acceso seguirá deshabilitado.",
+  eliminar: "Se eliminarán la cuenta de Auth y el perfil si carecen de dependencias históricas. Esta acción es irreversible.",
+}
 const roles: Rol[] = ["JEFE", "ASISTENTE", "PRACTICANTE", "REPRESENTANTE"]
 const mensajeError = (error: unknown) => error instanceof Error ? error.message : "No se pudo completar la operación."
+const iniciales = (nombre: string) => nombre.trim().split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase()).join("")
+const estado = (persona: Persona) => persona.archivado ? "Archivado" : persona.habilitado ? "Habilitado" : "Deshabilitado"
+const activacion = (persona: Persona) => persona.activacion === "ACTIVADA" ? "Activada" : persona.activacion === "PENDIENTE" ? "Pendiente de activación" : "Sin confirmar"
+
+function MenuPerfil({ persona, propio, configuracion, abrir, pedirAccion }: {
+  persona: Persona
+  propio: boolean
+  configuracion: Configuracion | null
+  abrir: (persona: Persona, lectura?: boolean) => void
+  pedirAccion: (persona: Persona, accion: Accion) => void
+}) {
+  const menu = useRef<HTMLDivElement>(null)
+  const menuId = `admin-menu-${persona.id}`
+  const opciones: Accion[] = []
+  if (configuracion?.edicion_habilitada) {
+    if (configuracion.gestion_ampliada && !persona.archivado && persona.correo && configuracion.invitaciones_habilitadas) {
+      if (persona.activacion === "PENDIENTE") opciones.push("reenviar")
+      if (persona.activacion === "ACTIVADA") opciones.push("recuperar")
+    }
+    if (!propio) {
+      if (persona.archivado && configuracion.gestion_ampliada) opciones.push("restaurar", "eliminar")
+      if (!persona.archivado) {
+        opciones.push(persona.habilitado ? "deshabilitar" : "habilitar")
+        if (configuracion.gestion_ampliada) opciones.push("archivar")
+      }
+    }
+  }
+  function elegir(accion: () => void) {
+    menu.current?.hidePopover()
+    accion()
+  }
+  return <>
+    <button type="button" className="admin-menu-trigger" popoverTarget={menuId} aria-label={`Acciones para ${persona.nombre_completo}`} onClick={evento => {
+      const panel = menu.current
+      if (!panel || panel.matches(":popover-open")) return
+      const ancla = evento.currentTarget.getBoundingClientRect()
+      const alto = (opciones.length + (configuracion?.edicion_habilitada && !persona.archivado ? 2 : 1)) * 42 + 14
+      const espacioAbajo = window.innerHeight - ancla.bottom - 10
+      const arriba = espacioAbajo < alto && ancla.top - 10 > espacioAbajo
+      panel.style.left = `${Math.max(8, Math.min(ancla.right - 246, window.innerWidth - 254))}px`
+      panel.style.top = arriba ? "auto" : `${ancla.bottom + 4}px`
+      panel.style.bottom = arriba ? `${window.innerHeight - ancla.top + 4}px` : "auto"
+      panel.style.maxHeight = `${arriba ? ancla.top - 10 : espacioAbajo}px`
+    }}>⋮</button>
+    <div ref={menu} id={menuId} popover="auto" className="admin-action-menu"
+      role="group" aria-label={`Acciones de ${persona.nombre_completo}`}>
+      <button type="button" onClick={() => elegir(() => abrir(persona, true))}><Icon name="login-eye" />Ver perfil</button>
+      {configuracion?.edicion_habilitada && !persona.archivado && <button type="button" onClick={() => elegir(() => abrir(persona))}><Icon name="tool" />Editar</button>}
+      {opciones.map(accion => <button type="button" key={accion} className={accion === "eliminar" ? "admin-danger" : undefined} onClick={() => elegir(() => pedirAccion(persona, accion))}>{acciones[accion]}</button>)}
+    </div>
+  </>
+}
+
+function DialogoAdministrativo({ ocupado, cerrar, children }: { ocupado: boolean; cerrar: () => void; children: ReactNode }) {
+  const dialogo = useRef<HTMLDialogElement>(null)
+  useEffect(() => { dialogo.current?.showModal() }, [])
+  return <dialog ref={dialogo} className="modal admin-dialog" aria-labelledby="admin-titulo" onCancel={evento => {
+    evento.preventDefault()
+    if (!ocupado) cerrar()
+  }}>{children}</dialog>
+}
 
 export default function RealAdministration({ token, perfil }: { token: string; perfil: PerfilReal }) {
-  const [usuarios, setUsuarios] = useState<PerfilReal[]>([])
+  const [usuarios, setUsuarios] = useState<Persona[]>([])
   const [areas, setAreas] = useState<Area[]>([])
   const [configuracion, setConfiguracion] = useState<Configuracion | null>(null)
   const [cargando, setCargando] = useState(true)
@@ -22,13 +99,14 @@ export default function RealAdministration({ token, perfil }: { token: string; p
   const [filtroEstado, setFiltroEstado] = useState("")
   const [pagina, setPagina] = useState(1)
   const [porPagina, setPorPagina] = useState(10)
-  const [edicion, setEdicion] = useState<PerfilReal | "invitar" | null>(null)
+  const [edicion, setEdicion] = useState<Persona | "invitar" | null>(null)
+  const [soloLectura, setSoloLectura] = useState(false)
+  const [confirmacion, setConfirmacion] = useState<{ persona: Persona; accion: Accion } | null>(null)
   const [nombre, setNombre] = useState("")
   const [usuario, setUsuario] = useState("")
   const [correo, setCorreo] = useState("")
   const [rol, setRol] = useState<Rol>("REPRESENTANTE")
   const [area, setArea] = useState("")
-  const [habilitado, setHabilitado] = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [auditoria,setAuditoria] = useState<{id:string;accion:string;actor_id:string;usuario_id:string;fecha_registro:string}[]|null>(null)
   const [errorAuditoria,setErrorAuditoria] = useState("")
@@ -38,7 +116,7 @@ export default function RealAdministration({ token, perfil }: { token: string; p
     let vigente = true
     setCargando(true); setError(""); setConfiguracion(null)
     Promise.all([
-      solicitarAPI<PerfilReal[]>("/api/usuarios", token),
+      solicitarAPI<Persona[]>("/api/usuarios", token),
       solicitarAPI<Area[]>("/api/areas", token),
       solicitarAPI<Configuracion>("/api/administracion/configuracion", token),
     ]).then(([personas, dependencias, config]) => {
@@ -49,29 +127,68 @@ export default function RealAdministration({ token, perfil }: { token: string; p
     return () => { vigente = false }
   }, [token, recarga])
 
-  function abrir(persona: PerfilReal | "invitar") {
+  useEffect(() => {
+    function cerrarMenu(evento: Event) {
+      const abierto = document.querySelector<HTMLElement>(".admin-action-menu:popover-open")
+      if (abierto && !(evento.target instanceof Node && abierto.contains(evento.target))) abierto.hidePopover()
+    }
+    window.addEventListener("wheel", cerrarMenu, { capture: true, passive: true })
+    window.addEventListener("touchmove", cerrarMenu, { capture: true, passive: true })
+    window.addEventListener("resize", cerrarMenu)
+    return () => {
+      window.removeEventListener("wheel", cerrarMenu, true)
+      window.removeEventListener("touchmove", cerrarMenu, true)
+      window.removeEventListener("resize", cerrarMenu)
+    }
+  }, [])
+
+  function abrir(persona: Persona | "invitar", lectura = false) {
+    setSoloLectura(lectura)
     setEdicion(persona); setError(""); setMensaje(""); setCorreo("")
     setNombre(persona === "invitar" ? "" : persona.nombre_completo)
     setUsuario(persona === "invitar" ? "" : persona.usuario)
     setRol(persona === "invitar" ? "REPRESENTANTE" : persona.rol)
     setArea(persona === "invitar" ? "" : persona.area_id)
-    setHabilitado(persona === "invitar" ? true : persona.habilitado)
   }
 
   async function guardar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault()
-    if (guardando || !edicion || !configuracion) return
+    if (guardando || soloLectura || !edicion || !configuracion) return
     const invitando = edicion === "invitar"
     if (invitando ? !configuracion.invitaciones_habilitadas : !configuracion.edicion_habilitada) return
     setGuardando(true); setError(""); setMensaje("")
     try {
       const datos = { nombre_completo: nombre.trim(), usuario: usuario.trim(), rol, area_id: area }
+      const cambios = invitando ? { ...datos, correo: correo.trim() } : {
+        ...(datos.nombre_completo !== edicion.nombre_completo && { nombre_completo: datos.nombre_completo }),
+        ...(datos.usuario !== edicion.usuario && { usuario: datos.usuario }),
+        ...(datos.rol !== edicion.rol && { rol: datos.rol }),
+        ...(datos.area_id !== edicion.area_id && { area_id: datos.area_id }),
+      }
+      if (Object.keys(cambios).length === 0) { setEdicion(null); return }
       await solicitarAPI<PerfilReal>(invitando ? "/api/usuarios/invitar" : `/api/usuarios/${encodeURIComponent(edicion.id)}`, token, {
         method: invitando ? "POST" : "PATCH",
-        body: JSON.stringify(invitando ? { ...datos, correo: correo.trim() } : { ...datos, habilitado }),
+        body: JSON.stringify(cambios),
       })
       setMensaje(invitando ? "Supabase aceptó la invitación y el perfil fue registrado. La entrega del correo y la activación deben confirmarse con el destinatario." : "Perfil actualizado correctamente.")
       setEdicion(null); setRecarga((x) => x + 1)
+    } catch (fallo) { setError(mensajeError(fallo)) }
+    finally { setGuardando(false) }
+  }
+
+  function pedirAccion(persona: Persona, accion: Accion) {
+    setError(""); setMensaje("")
+    setConfirmacion({ persona, accion })
+  }
+
+  async function confirmarAccion() {
+    if (!confirmacion || guardando) return
+    setGuardando(true); setError("")
+    try {
+      const resultado = await solicitarAPI<{ mensaje: string }>(`/api/usuarios/${encodeURIComponent(confirmacion.persona.id)}/acciones`, token, {
+        method: "POST", body: JSON.stringify({ accion: confirmacion.accion }),
+      })
+      setConfirmacion(null); setMensaje(resultado.mensaje); setRecarga(x => x + 1)
     } catch (fallo) { setError(mensajeError(fallo)) }
     finally { setGuardando(false) }
   }
@@ -82,7 +199,9 @@ export default function RealAdministration({ token, perfil }: { token: string; p
   const visibles = usuarios.filter(persona =>
     (!filtroRol || persona.rol === filtroRol) &&
     (!filtroArea || persona.area_id === filtroArea) &&
-    (!filtroEstado || persona.habilitado === (filtroEstado === "habilitado")) &&
+    (filtroEstado === "archivado" ? persona.archivado : !persona.archivado) &&
+    (filtroEstado === "pendiente" ? persona.activacion === "PENDIENTE" :
+      !filtroEstado || filtroEstado === estado(persona).toLowerCase()) &&
     `${persona.nombre_completo} ${persona.usuario} ${persona.rol} ${nombresArea.get(persona.area_id) || ""}`
       .toLocaleLowerCase("es").includes(consulta)
   )
@@ -102,8 +221,9 @@ export default function RealAdministration({ token, perfil }: { token: string; p
   return <div className="real-admin">
     <div className="page-title-row"><div className="admin-heading"><span className="admin-symbol"><Icon name="users" /></span><div><h2>Gestión de usuarios y áreas</h2><p>Administración de cuentas, roles y áreas municipales.</p></div></div><div className="real-actions"><button className="outline" onClick={() => { setRecarga(x => x + 1); if (vista === "historial") void consultarHistorial() }} disabled={cargando || cargandoAuditoria}><Icon name="refresh" />Actualizar</button><button className="primary" onClick={() => abrir("invitar")} disabled={cargando || !configuracion?.invitaciones_habilitadas}><Icon name="plus" />Nuevo usuario</button></div></div>
     {mensaje && <div className="notice" role="status">{mensaje}</div>}
-    {!edicion && error && <div className="auth-error" role="alert">{error}</div>}
+    {!edicion && !confirmacion && error && <div className="auth-error" role="alert">{error}</div>}
     {configuracion && configuracion.motivos.length > 0 && <details className="notice observation-notice admin-warning"><summary>Configuración administrativa pendiente</summary>{configuracion.motivos.map(motivo => <p key={motivo}>{motivo}</p>)}</details>}
+    {configuracion?.edicion_habilitada && !configuracion.gestion_ampliada && <div className="notice observation-notice admin-warning">La consulta del correo y la activación, el reenvío y el archivo requieren la migración de gestión de usuarios.</div>}
     <div className="admin-summary">
       <div className="admin-card"><span className="admin-symbol"><Icon name="users" /></span><div><h3>Usuarios registrados</h3><strong>{cargando || error ? "—" : usuarios.length}</strong><button type="button" className="text-button" onClick={() => setVista("usuarios")}>Administrar cuentas <Icon name="arrow" /></button></div></div>
       <div className="admin-card"><span className="admin-symbol"><Icon name="reports" /></span><div><h3>Áreas municipales</h3><strong>{cargando || error ? "—" : areas.length}</strong><button type="button" className="text-button" onClick={() => setVista("areas")}>Consultar áreas <Icon name="arrow" /></button></div></div>
@@ -118,20 +238,20 @@ export default function RealAdministration({ token, perfil }: { token: string; p
       {vista === "usuarios" && <div className="admin-directory-body">
         <div className="admin-heading"><span className="admin-symbol"><Icon name="clipboard" /></span><div><h3>Directorio de usuarios</h3><p>Consulta los perfiles y su estado administrativo.</p></div></div>
         <div className="admin-filters">
-          <label className="search"><Icon name="search" /><input aria-label="Buscar usuarios" placeholder="Buscar nombre, usuario, rol o área…" value={busqueda} onChange={e => { setBusqueda(e.target.value); setPagina(1) }} /></label>
+          <label>Buscar<span className="admin-search-field"><Icon name="search" /><input placeholder="Nombre, usuario, rol o área…" value={busqueda} onChange={e => { setBusqueda(e.target.value); setPagina(1) }} /></span></label>
           <label>Rol<select value={filtroRol} onChange={e => { setFiltroRol(e.target.value); setPagina(1) }}><option value="">Todos los roles</option>{roles.map(r => <option key={r}>{r}</option>)}</select></label>
           <label>Área<select value={filtroArea} onChange={e => { setFiltroArea(e.target.value); setPagina(1) }}><option value="">Todas las áreas</option>{areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}</select></label>
-          <label>Estado<select value={filtroEstado} onChange={e => { setFiltroEstado(e.target.value); setPagina(1) }}><option value="">Todos los estados</option><option value="habilitado">Habilitado</option><option value="deshabilitado">Deshabilitado</option></select></label>
+          <label>Estado<select value={filtroEstado} onChange={e => { setFiltroEstado(e.target.value); setPagina(1) }}><option value="">Perfiles sin archivar</option><option value="habilitado">Habilitado</option><option value="deshabilitado">Deshabilitado</option>{configuracion?.gestion_ampliada && <><option value="pendiente">Pendiente de activación</option><option value="archivado">Archivado</option></>}</select></label>
         </div>
         {cargando ? <div className="empty" role="status">Consultando directorio…</div> : registros.length ? <>
           <div className="table-wrap" tabIndex={0} role="region" aria-label="Directorio de usuarios"><table>
             <thead><tr><th>Nombre</th><th>Usuario</th><th>Área</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead>
             <tbody>{registros.map(persona => <tr key={persona.id}>
-              <td><div className="admin-person"><span className="admin-avatar" aria-hidden="true">{persona.nombre_completo.trim().split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase()).join("")}</span><strong>{persona.nombre_completo}</strong></div></td>
+              <td><div className="admin-person"><span className="admin-avatar" aria-hidden="true">{iniciales(persona.nombre_completo)}</span><strong>{persona.nombre_completo}</strong></div></td>
               <td>{persona.usuario}</td><td>{nombresArea.get(persona.area_id) || "Área no disponible"}</td>
               <td><span className={`admin-role admin-role-${persona.rol.toLowerCase()}`}>{persona.rol}</span></td>
-              <td><span className={`admin-state ${persona.habilitado ? "admin-state-enabled" : ""}`}>{persona.habilitado ? "Habilitado" : "Deshabilitado"}</span></td>
-              <td><details className="admin-row-actions"><summary aria-label={`Acciones para ${persona.nombre_completo}`}>⋮</summary><button type="button" onClick={e => { if (e.currentTarget.parentElement instanceof HTMLDetailsElement) e.currentTarget.parentElement.open = false; abrir(persona) }} disabled={!configuracion?.edicion_habilitada}>Editar perfil</button></details></td>
+              <td><span className={`admin-state ${persona.habilitado ? "admin-state-enabled" : ""}`}>{estado(persona)}</span>{configuracion?.gestion_ampliada && <small className="admin-activation">{activacion(persona)}</small>}</td>
+              <td><MenuPerfil persona={persona} propio={persona.id === perfil.id} configuracion={configuracion} abrir={abrir} pedirAccion={pedirAccion} /></td>
             </tr>)}</tbody>
           </table></div>
           <div className="pagination admin-pagination"><span>Mostrando {desde + 1}–{desde + registros.length} de {visibles.length}</span><div>
@@ -145,15 +265,41 @@ export default function RealAdministration({ token, perfil }: { token: string; p
       {vista === "areas" && <div className="admin-directory-body"><h3>Áreas municipales</h3><p className="help">Solo se pueden asignar áreas activas.</p><div className="admin-areas">{areas.map(dependencia => <span className="admin-area" key={dependencia.id}>{dependencia.nombre} · <Badge>{dependencia.activo ? "Activa" : "Inactiva"}</Badge></span>)}</div>{!cargando && !areas.length && <p className="help">No hay áreas disponibles.</p>}</div>}
       {vista === "historial" && <div className="admin-directory-body"><h3>Historial administrativo</h3>{cargandoAuditoria && <p role="status">Consultando historial…</p>}{errorAuditoria && <p role="alert" className="auth-error">{errorAuditoria}</p>}{auditoria && (auditoria.length ? <ul className="real-history">{auditoria.map(a => <li key={a.id}>{a.accion} · {usuarios.find(u => u.id === a.usuario_id)?.usuario || a.usuario_id} · {new Date(a.fecha_registro).toLocaleString("es-PE", { timeZone: "America/Lima" })} · Por {usuarios.find(u => u.id === a.actor_id)?.usuario || a.actor_id}</li>)}</ul> : <p>Sin cambios administrativos registrados.</p>)}</div>}
     </section>
-    {edicion && <div className="overlay"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="admin-titulo"><button className="close" aria-label="Cerrar formulario" disabled={guardando} onClick={() => { setEdicion(null); setError("") }}>×</button><h2 id="admin-titulo">{edicion === "invitar" ? "Invitar usuario" : "Editar perfil"}</h2><form onSubmit={guardar}>
-      <label>Nombre completo<input autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} required maxLength={150} disabled={guardando} /></label>
-      <label>Usuario<input value={usuario} onChange={(e) => setUsuario(e.target.value)} required minLength={3} maxLength={80} pattern="[a-zA-Z0-9][a-zA-Z0-9_.-]*" disabled={guardando} /></label>
-      {edicion === "invitar" && <label>Correo institucional<input type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} required maxLength={254} disabled={guardando} /></label>}
-      <div className="form-row"><label>Rol<select value={rol} onChange={(e) => setRol(e.target.value as Rol)} disabled={guardando || propiasCredenciales}>{roles.map((opcion) => <option key={opcion}>{opcion}</option>)}</select></label><label>Área<select value={area} onChange={(e) => setArea(e.target.value)} required disabled={guardando}><option value="">Seleccionar área</option>{areas.filter((a) => a.activo || a.id === area).map((a) => <option key={a.id} value={a.id} disabled={!a.activo}>{a.nombre}{!a.activo ? " (inactiva)" : ""}</option>)}</select></label></div>
-      {edicion !== "invitar" && <label className="checkline"><input type="checkbox" checked={habilitado} onChange={(e) => setHabilitado(e.target.checked)} disabled={guardando || propiasCredenciales} />Perfil habilitado</label>}
-      {propiasCredenciales && <p className="help">Tu rol y habilitación se protegen para conservar el acceso de la jefatura.</p>}
+    {edicion && <DialogoAdministrativo ocupado={guardando} cerrar={() => { setEdicion(null); setError("") }}>
+      <div className="admin-heading admin-dialog-heading">
+        <span className="admin-symbol">{edicion === "invitar" ? <Icon name="plus" /> : iniciales(edicion.nombre_completo)}</span>
+        <div><h2 id="admin-titulo">{edicion === "invitar" ? "Invitar usuario" : soloLectura ? "Ver perfil" : "Editar perfil"}</h2>
+          {edicion !== "invitar" && <p>{edicion.nombre_completo} · {estado(edicion)}{configuracion?.gestion_ampliada ? ` · ${activacion(edicion)}` : ""}</p>}
+        </div>
+      </div>
+      <form onSubmit={guardar}>
+        <div className="admin-profile-fields">
+          <label>Nombre completo<input autoFocus={!soloLectura} value={nombre} onChange={e => setNombre(e.target.value)} required maxLength={150} readOnly={soloLectura} disabled={guardando} /></label>
+          <label>Usuario<input value={usuario} onChange={e => setUsuario(e.target.value)} required minLength={3} maxLength={80} pattern={"[a-zA-Z0-9][a-zA-Z0-9_.\\-]*"} readOnly={soloLectura} disabled={guardando} /></label>
+          <label className="admin-profile-email"><span><Icon name={edicion === "invitar" ? "login-mail" : "login-lock"} />Correo institucional</span>
+            {edicion === "invitar" ? <input type="email" value={correo} onChange={e => setCorreo(e.target.value)} required maxLength={254} disabled={guardando} />
+              : <input value={edicion.correo || "No disponible"} readOnly />}
+          </label>
+          <label>Rol<select value={rol} onChange={e => setRol(e.target.value as Rol)} disabled={guardando || propiasCredenciales || soloLectura}>{roles.map(opcion => <option key={opcion}>{opcion}</option>)}</select></label>
+          <label>Área<select value={area} onChange={e => setArea(e.target.value)} required disabled={guardando || soloLectura}><option value="">Seleccionar área</option>{areas.filter(a => a.activo || a.id === area).map(a => <option key={a.id} value={a.id} disabled={!a.activo && a.id !== area}>{a.nombre}{!a.activo ? " (inactiva)" : ""}</option>)}</select></label>
+        </div>
+        {propiasCredenciales && !soloLectura && <p className="help">Tu rol se protege para conservar el acceso de la jefatura.</p>}
+        {error && <div className="auth-error" role="alert">{error}</div>}
+        <div className="modal-actions">
+          <button type="button" className="outline" autoFocus={soloLectura} disabled={guardando} onClick={() => { setEdicion(null); setError("") }}>{soloLectura ? "Cerrar" : "Cancelar"}</button>
+          {!soloLectura && <button type="submit" className="primary" disabled={guardando}>{guardando ? "Guardando…" : edicion === "invitar" ? "Enviar invitación" : "Guardar cambios"}</button>}
+        </div>
+      </form>
+    </DialogoAdministrativo>}
+    {confirmacion && <DialogoAdministrativo ocupado={guardando} cerrar={() => { setConfirmacion(null); setError("") }}>
+      <h2 id="admin-titulo">{acciones[confirmacion.accion]}</h2>
+      <p><strong>{confirmacion.persona.nombre_completo}</strong></p>
+      <p>{advertencias[confirmacion.accion]}</p>
       {error && <div className="auth-error" role="alert">{error}</div>}
-      <div className="modal-actions"><button type="button" className="outline" disabled={guardando} onClick={() => { setEdicion(null); setError("") }}>Cancelar</button><button type="submit" className="primary" disabled={guardando}>{guardando ? "Guardando…" : edicion === "invitar" ? "Enviar invitación" : "Guardar cambios"}</button></div>
-    </form></section></div>}
+      <div className="modal-actions">
+        <button type="button" className="outline" autoFocus disabled={guardando} onClick={() => { setConfirmacion(null); setError("") }}>Cancelar</button>
+        <button type="button" className={confirmacion.accion === "eliminar" ? "primary admin-danger-button" : "primary"} disabled={guardando} onClick={() => void confirmarAccion()}>{guardando ? "Procesando…" : "Confirmar"}</button>
+      </div>
+    </DialogoAdministrativo>}
   </div>
 }
