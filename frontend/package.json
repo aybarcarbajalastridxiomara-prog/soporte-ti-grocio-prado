@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
+    "build:qa": "test \"$APP_ENV\" = qa && test \"$SUPABASE_URL\" = https://vmtvttlmnqcucotskceh.supabase.co && test -n \"$VITE_SUPABASE_ANON_KEY\" && VITE_MODO_REAL=true VITE_QA_MISMO_ORIGEN=true VITE_SUPABASE_URL=\"$SUPABASE_URL\" VITE_CONSULTA_CICLOS_V4=true VITE_PERMITIR_ASIGNACION_REAL=true VITE_PERMITIR_ATENCION_REAL=true VITE_PERMITIR_VERIFICACION_REAL=true npm run build -- --outDir ../backend/dist --emptyOutDir",
     "test": "node --test tests/*.test.mjs",
     "preview": "vite preview"
   },
