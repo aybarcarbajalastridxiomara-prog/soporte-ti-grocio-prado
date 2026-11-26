@@ -518,7 +518,7 @@ def administrar_usuario(
     except SQLAlchemyError as error:
         db.rollback()
         codigo = getattr(getattr(error, "orig", None), "sqlstate", None)
-        if accion == "eliminar" and codigo == "23503":
+        if accion == "eliminar" and codigo in ("23001", "23503"):
             raise HTTPException(409, "El perfil tiene dependencias históricas. Consérvalo archivado.") from None
         if codigo == "P0001":
             raise HTTPException(409, "El área alcanzó el cupo autorizado de representantes.") from None
