@@ -11,6 +11,7 @@ export type { SesionReal } from "./session"
 const API_URL = (
   import.meta.env.VITE_API_BASE_URL || ""
 ).trim().replace(/\/+$/, "")
+const API_MISMO_ORIGEN = import.meta.env.VITE_QA_MISMO_ORIGEN === "true"
 
 const SUPABASE_URL = (
   import.meta.env.VITE_SUPABASE_URL || ""
@@ -215,7 +216,7 @@ async function solicitarRespuesta(
   token: string,
   opciones: RequestInit = {},
 ): Promise<Response> {
-  if (!API_URL) {
+  if (!API_URL && !API_MISMO_ORIGEN) {
     throw new Error("Falta configurar la URL del backend.")
   }
 
@@ -235,7 +236,7 @@ async function solicitarRespuesta(
     headers.set("Content-Type", "application/json")
   }
 
-  const enviar = () => fetch(`${API_URL}${ruta}`, {
+  const enviar = () => fetch(API_MISMO_ORIGEN ? ruta : `${API_URL}${ruta}`, {
     ...opciones,
     headers,
     cache: "no-store",

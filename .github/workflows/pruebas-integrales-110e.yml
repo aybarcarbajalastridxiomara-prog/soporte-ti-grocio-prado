@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - ajustes-docente-v4
+      - qa-hitos
     paths:
       - "backend/**"
       - "frontend/**"
@@ -121,6 +122,7 @@ jobs:
 
   compilar-frontend:
     name: Compilar interfaz React de todos los perfiles
+    if: github.ref_name != 'qa-hitos'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

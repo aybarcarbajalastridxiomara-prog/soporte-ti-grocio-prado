@@ -5,8 +5,11 @@ on:
   push:
     branches:
       - main
+      - qa-hitos
     paths:
       - "frontend/**"
+      - "backend/app/main.py"
+      - "backend/vercel.json"
       - ".github/workflows/verificar-frontend.yml"
   workflow_dispatch:
 
@@ -16,6 +19,7 @@ permissions:
 jobs:
   verificar-frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 8
 
     steps:
       - name: Descargar repositorio
@@ -28,7 +32,11 @@ jobs:
 
       - name: Instalar dependencias
         working-directory: frontend
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
+
+      - name: Ejecutar pruebas del frontend
+        working-directory: frontend
+        run: npm test
 
       - name: Compilar aplicacion de Figma
         working-directory: frontend
@@ -40,3 +48,36 @@ jobs:
           test -f dist/index.html
           test -d dist/assets
           echo "Frontend Figma compilado correctamente"
+
+  verificar-preview-qa:
+    if: github.ref_name == 'qa-hitos' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      APP_ENV: qa
+      SUPABASE_URL: https://vmtvttlmnqcucotskceh.supabase.co
+      VITE_SUPABASE_ANON_KEY: clave-publica-ficticia-ci
+      VERCEL_GIT_COMMIT_REF: qa-hitos
+      DATABASE_URL: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compilar el Preview con el comando de Vercel
+        working-directory: backend
+        run: node -p "require('./vercel.json').buildCommand" | bash
+      - name: Comprobar interfaz, API y requisito de sesión en el mismo dominio
+        working-directory: backend
+        run: |
+          python -m pip install -r requirements.txt
+          python -m uvicorn app.main:app --host 127.0.0.1 --port 8765 &
+          trap 'kill "$!"' EXIT
+          qa_url=http://127.0.0.1:8765
+          curl --fail --silent --show-error --retry 5 --retry-connrefused "$qa_url/" | grep 'id="root"'
+          curl --fail --silent --show-error "$qa_url/api/health" | grep '"base_datos":"no_configurada"'
+          test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$qa_url/api/me")" = 401
+          echo 'Preview de QA: interfaz y API en un dominio, con acceso anónimo rechazado.' >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,4 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "if [ \"$VERCEL_GIT_COMMIT_REF\" = qa-hitos ]; then test \"$APP_ENV\" = qa && test \"$SUPABASE_URL\" = https://vmtvttlmnqcucotskceh.supabase.co && test -n \"$VITE_SUPABASE_ANON_KEY\" && npm --prefix ../frontend ci --no-audit --no-fund && VITE_MODO_REAL=true VITE_QA_MISMO_ORIGEN=true VITE_SUPABASE_URL=\"$SUPABASE_URL\" VITE_CONSULTA_CICLOS_V4=true VITE_PERMITIR_ASIGNACION_REAL=true VITE_PERMITIR_ATENCION_REAL=true VITE_PERMITIR_VERIFICACION_REAL=true npm --prefix ../frontend run build -- --outDir ../backend/dist --emptyOutDir; fi"
+}

@@ -1,8 +1,10 @@
 
 import logging
+from pathlib import Path
 from fastapi import Depends, FastAPI
 from fastapi.routing import APIRoute
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.db import verificar_conexion_db
 from app.v4_guardia import proteger_operacion_v3
@@ -108,7 +110,6 @@ app.include_router(v4_intervenciones_router)
 app.include_router(v4_cierres_router)
 
 
-@app.get("/")
 def inicio():
     return {
         "sistema": "Soporte TI - Grocio Prado",
@@ -205,3 +206,10 @@ def verificar_estado():
         "servicio": "backend",
         "base_datos": estado_db,
     }
+
+
+frontend_qa = Path(__file__).resolve().parents[1] / "dist"
+if get_settings().environment == "qa" and (frontend_qa / "index.html").is_file():
+    app.mount("/", StaticFiles(directory=frontend_qa, html=True), name="frontend-qa")
+else:
+    app.get("/")(inicio)
