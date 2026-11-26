@@ -100,6 +100,20 @@ class Preentrega111A(unittest.TestCase):
         self.assertNotIn("secreto-solo-prueba", response.text)
         self.assertNotIn("service_role_key", response.text)
 
+    def test_correo_consulta_auth_por_uuid_sin_migracion_y_solo_como_jefe(self):
+        tecnico = self.ids["ASISTENTE"]
+        ruta = f"/api/usuarios/{tecnico}/correo"
+        with patch("app.routes.usuarios.consultar_correo_supabase", return_value="tecnico@example.test") as consultar:
+            self.actor = "REPRESENTANTE"
+            self.assertEqual(self.client.get(ruta).status_code, 403)
+            self.actor = "JEFE"
+            self.assertEqual(self.client.get(f"/api/usuarios/{uuid4()}/correo").status_code, 404)
+            consultar.assert_not_called()
+            respuesta = self.client.get(ruta)
+            self.assertEqual(respuesta.json(), {"correo": "tecnico@example.test"})
+            self.assertEqual(respuesta.headers["cache-control"], "no-store")
+            consultar.assert_called_once_with(tecnico)
+
     def test_actualizar_rol_area_y_deshabilitar_revoca_acceso(self):
         target = self.ids["ASISTENTE"]
         response = self.client.patch(f"/api/usuarios/{target}", json={"rol": "PRACTICANTE", "area_id": str(self.otra_area), "habilitado": False})

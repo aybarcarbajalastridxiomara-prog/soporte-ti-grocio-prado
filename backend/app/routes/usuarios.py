@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 from sqlalchemy import select, text, func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -13,7 +13,7 @@ from app.auth import get_current_user, require_roles
 from app.config import get_settings
 from app.db import get_db
 from app.models import Area, Asignacion, Usuario, AuditoriaAdministrativa
-from app.supabase_admin import invitar_en_supabase, recuperar_en_supabase
+from app.supabase_admin import consultar_correo_supabase, invitar_en_supabase, recuperar_en_supabase
 
 
 router = APIRouter(
@@ -237,6 +237,17 @@ def listar_usuarios(
                 elif cuenta["invitado"]:
                     perfil.activacion = "PENDIENTE"
     return perfiles
+
+
+@router.get("/usuarios/{usuario_id}/correo")
+def consultar_correo_usuario(
+    usuario_id: UUID, response: Response,
+    _jefe: Usuario = Depends(require_roles("JEFE")), db: Session = Depends(get_db),
+) -> dict[str, str | None]:
+    if db.get(Usuario, usuario_id) is None:
+        raise HTTPException(404, "Usuario no disponible.")
+    response.headers["Cache-Control"] = "no-store"
+    return {"correo": consultar_correo_supabase(usuario_id)}
 
 
 @router.get("/areas", response_model=list[AreaLectura])

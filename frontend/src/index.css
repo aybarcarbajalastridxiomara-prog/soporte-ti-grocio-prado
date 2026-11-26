@@ -879,10 +879,10 @@
 .real-admin .admin-menu-trigger {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   padding: 0;
-  border: 1px solid #c8d9ee;
+  border: 1px solid #e0e6ef;
   border-radius: 8px;
   background: #fff;
   color: #104b87;
@@ -893,31 +893,43 @@
 .real-admin .admin-action-menu {
   position: fixed;
   inset: auto;
-  width: min(246px, calc(100vw - 16px));
+  width: min(236px, calc(100vw - 16px));
   margin: 0;
-  padding: 6px;
+  padding: 6px 12px;
   overflow: auto;
-  border: 1px solid #c8d9ee;
-  border-radius: 10px;
+  border: 1px solid #e1e6ed;
+  border-radius: 14px;
   background: #fff;
-  box-shadow: 0 8px 24px #122e4c26;
+  box-shadow: 0 6px 18px #122e4c16;
+}
+.real-admin .admin-menu-group + .admin-menu-group {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e7eaf0;
 }
 .real-admin .admin-action-menu button {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  min-height: 38px;
-  padding: 8px;
+  min-height: 35px;
+  padding: 6px 3px;
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: #173a62;
+  color: #202a38;
+  font-size: .82rem;
+  font-weight: 500;
   text-align: left;
 }
-.real-admin .admin-action-menu button:hover,
+.real-admin .admin-action-menu button:not(:disabled):hover,
 .real-admin .admin-action-menu button:focus-visible { background: #eaf3fc; }
-.real-admin .admin-action-menu button.admin-danger { color: #a12527; }
+.real-admin .admin-action-menu .icon { flex: 0 0 16px; height: 16px; color: #4a6382; }
+.real-admin .admin-action-menu :is(.admin-menu-editar, .admin-menu-reenviar, .admin-menu-recuperar) .icon { color: #0758b4; }
+.real-admin .admin-action-menu .admin-menu-habilitar .icon { color: #15854d; }
+.real-admin .admin-action-menu .admin-menu-eliminar,
+.real-admin .admin-action-menu .admin-menu-eliminar .icon { color: #b62329; }
+.real-admin .admin-action-menu button:disabled { opacity: .65; cursor: not-allowed; }
 .real-admin .admin-dialog {
   position: fixed;
   inset: 0;
@@ -928,8 +940,9 @@
   overflow: auto;
 }
 .real-admin .admin-dialog::backdrop { background: #081e3d85; }
+.real-admin .admin-dialog-heading { margin-bottom: 16px; }
 .real-admin .admin-dialog-heading h2 { margin: 0; }
-.real-admin .admin-dialog-heading .admin-symbol { font-weight: 700; }
+.real-admin .admin-dialog-heading .admin-symbol { font-weight: 700; border-radius: 50%; }
 .real-admin .admin-profile-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .real-admin .admin-profile-fields label { min-width: 0; margin: 0; }
 .real-admin .admin-profile-fields :is(input, select) { width: 100%; min-width: 0; }
