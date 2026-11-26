@@ -743,3 +743,140 @@
   .real-app.forms-refresh .register-header-icon .icon { width: 22px; height: 22px; }
   .real-app.forms-refresh .real-register .modal-actions > button { flex: 1 1 auto; }
 }
+
+/* Directorio administrativo */
+.real-admin .admin-heading,
+.real-admin .admin-person {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.real-admin .admin-symbol {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: #dcecff;
+  color: #0758a8;
+}
+
+.real-admin .admin-symbol .icon { width: 24px; height: 24px; }
+.real-admin .admin-warning { margin: 0; color: #783a08; }
+.real-admin .admin-warning summary { cursor: pointer; font-weight: 700; }
+.real-admin .admin-warning p { margin: 8px 0 0; }
+
+.real-admin .admin-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.real-admin .admin-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: linear-gradient(130deg, #fff, #f4f8fe);
+  border: 1px solid #ccdef4;
+  border-radius: 14px;
+  box-shadow: 0 2px 4px #123f6510;
+}
+
+.real-admin .admin-card h3,
+.real-admin .admin-directory h3 { margin: 0; font-size: 1rem; }
+.real-admin .admin-card strong { display: block; margin-top: 4px; color: #10294e; font-size: 1.5rem; line-height: 1.25; }
+.real-admin .admin-card p,
+.real-admin .admin-heading p { margin: 4px 0 0; }
+.real-admin .admin-card .text-button { margin-top: 6px; padding: 0; text-align: left; }
+.real-admin .admin-card .text-button .icon { width: 14px; height: 14px; vertical-align: middle; }
+
+.real-admin .admin-directory { padding: 0; overflow: hidden; }
+.real-admin .admin-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 12px; background: #f2f7fe; border-bottom: 1px solid #ccdef4; }
+.real-admin .admin-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 8px 12px;
+  background: transparent;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  color: #375278;
+}
+.real-admin .admin-tabs button[aria-pressed="true"] { color: #0755a0; border-bottom-color: #0768c2; font-weight: 700; opacity: 1; }
+.real-admin .admin-directory-body { padding: 16px; }
+.real-admin .admin-filters {
+  display: grid;
+  align-items: end;
+  grid-template-columns: minmax(150px, 1.6fr) repeat(3, minmax(110px, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+.real-admin .admin-filters label { min-width: 0; font-size: .85rem; font-weight: 600; }
+.real-admin .admin-filters select { display: block; width: 100%; margin-top: 4px; }
+.real-admin .admin-directory .table-wrap { max-width: 100%; overflow-x: auto; }
+.real-admin .admin-directory table { min-width: 650px; }
+.real-admin .admin-directory thead { background: #e9f1fc; }
+.real-admin .admin-avatar {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #d8ebff;
+  color: #083d78;
+  font-weight: 700;
+}
+
+.real-admin .admin-role,
+.real-admin .admin-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 20px;
+  background: #e8eef5;
+  color: #324965;
+  font-size: .74rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.real-admin .admin-role-jefe,
+.real-admin .admin-role-asistente { background: #dcecff; color: #124b88; }
+.real-admin .admin-role-representante { background: #eee6ff; color: #4a2a83; }
+.real-admin .admin-state-enabled { background: #daf4e5; color: #12623a; }
+.real-admin .admin-state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+.real-admin .admin-row-actions summary {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 32px;
+  border: 1px solid #c8d9ee;
+  border-radius: 8px;
+  background: #fff;
+  color: #104b87;
+  cursor: pointer;
+  font-size: 20px;
+}
+.real-admin .admin-row-actions summary::-webkit-details-marker { display: none; }
+.real-admin .admin-row-actions button { display: block; margin-top: 6px; white-space: nowrap; }
+.real-admin .admin-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 12px; }
+.real-admin .admin-pagination > div,
+.real-admin .admin-pagination label { display: flex; align-items: center; gap: 8px; }
+.real-admin .admin-areas { display: flex; flex-wrap: wrap; gap: 8px; }
+.real-admin .admin-area { padding: 7px 10px; background: #f1f6fd; border: 1px solid #dbe7f5; border-radius: 8px; }
+
+@media (max-width: 940px) {
+  .real-admin .admin-summary { grid-template-columns: repeat(auto-fit, minmax(min(195px, 100%), 1fr)); }
+  .real-admin .admin-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 480px) {
+  .real-admin .admin-filters { grid-template-columns: 1fr; }
+  .real-admin .admin-tabs { padding: 0 5px; }
+  .real-admin .admin-tabs button { padding-inline: 7px; }
+}
