@@ -225,7 +225,9 @@ export default function RealAdministration({ token, perfil }: { token: string; p
 
   const propiasCredenciales = edicion !== null && edicion !== "invitar" && edicion.id === perfil.id
   const nombresArea = new Map(areas.map(a => [a.id, a.nombre]))
+  const nombresUsuario = new Map(usuarios.map(u => [u.id, u.usuario]))
   const consulta = busqueda.trim().toLocaleLowerCase("es")
+  const hayFiltros = Boolean(consulta || filtroRol || filtroArea || filtroEstado)
   const visibles = usuarios.filter(persona =>
     (!filtroRol || persona.rol === filtroRol) &&
     (!filtroArea || persona.area_id === filtroArea) &&
@@ -240,6 +242,10 @@ export default function RealAdministration({ token, perfil }: { token: string; p
   const desde = (paginaActual - 1) * porPagina
   const registros = visibles.slice(desde, desde + porPagina)
 
+  function limpiarFiltros() {
+    setBusqueda(""); setFiltroRol(""); setFiltroArea(""); setFiltroEstado(""); setPagina(1)
+  }
+
   async function consultarHistorial() {
     setVista("historial")
     setErrorAuditoria(""); setAuditoria(null); setCargandoAuditoria(true)
@@ -249,7 +255,12 @@ export default function RealAdministration({ token, perfil }: { token: string; p
   }
 
   return <div className="real-admin">
-    <div className="page-title-row"><div className="admin-heading"><span className="admin-symbol"><Icon name="users" /></span><div><h2>Gestión de usuarios y áreas</h2><p>Administración de cuentas, roles y áreas municipales.</p></div></div><div className="real-actions"><button className="outline" onClick={() => { setRecarga(x => x + 1); if (vista === "historial") void consultarHistorial() }} disabled={cargando || cargandoAuditoria}><Icon name="refresh" />Actualizar</button><button className="primary" onClick={() => abrir("invitar")} disabled={cargando || !configuracion?.invitaciones_habilitadas}><Icon name="plus" />Nuevo usuario</button></div></div>
+    <section className="real-shell-greeting incident-hero admin-hero">
+      <div><h2>Gestión de usuarios y áreas</h2><p>Administra las cuentas, los roles y las áreas municipales.</p></div>
+      <div className="real-dashboard-banner-art admin-hero-art" aria-hidden="true">
+        <span className="admin-hero-people"><Icon name="users" /></span><span className="admin-hero-shield"><Icon name="login-shield" /></span>
+      </div>
+    </section>
     {mensaje && <div className="notice" role="status">{mensaje}</div>}
     {!edicion && !confirmacion && error && <div className="auth-error" role="alert">{error}</div>}
     {configuracion && configuracion.motivos.length > 0 && <details className="notice observation-notice admin-warning"><summary>Configuración administrativa pendiente</summary>{configuracion.motivos.map(motivo => <p key={motivo}>{motivo}</p>)}</details>}
@@ -257,30 +268,44 @@ export default function RealAdministration({ token, perfil }: { token: string; p
     <div className="admin-summary">
       <div className="admin-card"><span className="admin-symbol"><Icon name="users" /></span><div><h3>Usuarios registrados</h3><strong>{cargando || error ? "—" : usuarios.length}</strong><button type="button" className="text-button" onClick={() => setVista("usuarios")}>Administrar cuentas <Icon name="arrow" /></button></div></div>
       <div className="admin-card"><span className="admin-symbol"><Icon name="reports" /></span><div><h3>Áreas municipales</h3><strong>{cargando || error ? "—" : areas.length}</strong><button type="button" className="text-button" onClick={() => setVista("areas")}>Consultar áreas <Icon name="arrow" /></button></div></div>
-      <div className="admin-card"><span className="admin-symbol"><Icon name="clock" /></span><div><h3>Historial administrativo</h3><p>Cambios en los perfiles</p><button type="button" className="text-button" disabled={cargandoAuditoria} onClick={() => void consultarHistorial()}>Consultar historial <Icon name="arrow" /></button></div></div>
+      <div className="admin-card"><span className="admin-symbol"><Icon name="clock" /></span><div><h3>Historial administrativo</h3><p>Cambios registrados en las cuentas</p><button type="button" className="text-button" disabled={cargandoAuditoria} onClick={() => void consultarHistorial()}>Consultar historial <Icon name="arrow" /></button></div></div>
     </div>
     <section className="card table-card admin-directory" aria-busy={cargando}>
       <nav className="admin-tabs" aria-label="Gestión de usuarios y áreas">
         <button type="button" aria-pressed={vista === "usuarios"} onClick={() => setVista("usuarios")}><Icon name="users" />Directorio de usuarios</button>
         <button type="button" aria-pressed={vista === "areas"} onClick={() => setVista("areas")}><Icon name="reports" />Áreas municipales</button>
-        {vista === "historial" && <button type="button" aria-pressed="true" disabled><Icon name="clock" />Historial</button>}
+        <button type="button" aria-pressed={vista === "historial"} disabled={cargandoAuditoria} onClick={() => void consultarHistorial()}><Icon name="clock" />Historial</button>
       </nav>
+      <div className="admin-directory-toolbar">
+        <div className="admin-heading">
+          <span className="admin-symbol"><Icon name={vista === "usuarios" ? "clipboard" : vista === "areas" ? "reports" : "clock"} /></span>
+          <div><h3>{vista === "usuarios" ? "Directorio de usuarios" : vista === "areas" ? "Áreas municipales" : "Historial administrativo"}</h3>
+            {vista === "usuarios" && !cargando && !error && <p>{visibles.length} {visibles.length === 1 ? "perfil" : "perfiles"}</p>}
+            {vista === "areas" && <p>Solo se pueden asignar áreas activas.</p>}
+          </div>
+        </div>
+        <div className="real-actions">
+          <button className="outline" onClick={() => { setRecarga(x => x + 1); if (vista === "historial") void consultarHistorial() }} disabled={cargando || cargandoAuditoria}><Icon name="refresh" />Actualizar</button>
+          <button className="primary" onClick={() => abrir("invitar")} disabled={cargando || !configuracion?.invitaciones_habilitadas}><Icon name="plus" />Nuevo usuario</button>
+        </div>
+      </div>
       {vista === "usuarios" && <div className="admin-directory-body">
-        <div className="admin-heading"><span className="admin-symbol"><Icon name="clipboard" /></span><div><h3>Directorio de usuarios</h3><p>Consulta los perfiles y su estado administrativo.</p></div></div>
         <div className="admin-filters">
           <label>Buscar<span className="admin-search-field"><Icon name="search" /><input placeholder="Nombre, usuario, rol o área…" value={busqueda} onChange={e => { setBusqueda(e.target.value); setPagina(1) }} /></span></label>
           <label>Rol<select value={filtroRol} onChange={e => { setFiltroRol(e.target.value); setPagina(1) }}><option value="">Todos los roles</option>{roles.map(r => <option key={r}>{r}</option>)}</select></label>
           <label>Área<select value={filtroArea} onChange={e => { setFiltroArea(e.target.value); setPagina(1) }}><option value="">Todas las áreas</option>{areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}</select></label>
           <label>Estado<select value={filtroEstado} onChange={e => { setFiltroEstado(e.target.value); setPagina(1) }}><option value="">Perfiles sin archivar</option><option value="habilitado">Habilitado</option><option value="deshabilitado">Deshabilitado</option>{configuracion?.gestion_ampliada && <><option value="pendiente">Pendiente de activación</option><option value="archivado">Archivado</option></>}</select></label>
         </div>
+        {hayFiltros && <button type="button" className="text-button admin-clear" onClick={limpiarFiltros}><Icon name="refresh" />Limpiar filtros</button>}
         {cargando ? <div className="empty" role="status">Consultando directorio…</div> : registros.length ? <>
           <div className="table-wrap" tabIndex={0} role="region" aria-label="Directorio de usuarios"><table>
-            <thead><tr><th>Nombre</th><th>Usuario</th><th>Área</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <thead><tr><th scope="col">Nombre</th><th scope="col">Usuario</th><th scope="col">Área</th><th scope="col">Rol</th><th scope="col">Estado</th>{configuracion?.gestion_ampliada && <th scope="col">Activación</th>}<th scope="col">Acciones</th></tr></thead>
             <tbody>{registros.map(persona => <tr key={persona.id}>
               <td><div className="admin-person"><span className="admin-avatar" aria-hidden="true">{iniciales(persona.nombre_completo)}</span><strong>{persona.nombre_completo}</strong></div></td>
               <td>{persona.usuario}</td><td>{nombresArea.get(persona.area_id) || "Área no disponible"}</td>
               <td><span className={`admin-role admin-role-${persona.rol.toLowerCase()}`}>{persona.rol}</span></td>
-              <td><span className={`admin-state ${persona.habilitado ? "admin-state-enabled" : ""}`}>{estado(persona)}</span>{configuracion?.gestion_ampliada && <small className="admin-activation">{activacion(persona)}</small>}</td>
+              <td><span className={`admin-state ${persona.habilitado ? "admin-state-enabled" : ""}`}>{estado(persona)}</span></td>
+              {configuracion?.gestion_ampliada && <td><span className="admin-activation" data-activacion={persona.activacion}>{activacion(persona)}</span></td>}
               <td><MenuPerfil persona={persona} propio={persona.id === perfil.id} configuracion={configuracion} abrir={abrir} pedirAccion={pedirAccion} /></td>
             </tr>)}</tbody>
           </table></div>
@@ -292,8 +317,19 @@ export default function RealAdministration({ token, perfil }: { token: string; p
           </div></div>
         </> : <div className="empty"><Icon name="users" /><h3>{error ? "Directorio no disponible" : "Sin usuarios para mostrar"}</h3>{!error && <p>{consulta || filtroRol || filtroArea || filtroEstado ? "Ajusta la búsqueda o los filtros." : "Los perfiles registrados aparecerán aquí."}</p>}</div>}
       </div>}
-      {vista === "areas" && <div className="admin-directory-body"><h3>Áreas municipales</h3><p className="help">Solo se pueden asignar áreas activas.</p><div className="admin-areas">{areas.map(dependencia => <span className="admin-area" key={dependencia.id}>{dependencia.nombre} · <Badge>{dependencia.activo ? "Activa" : "Inactiva"}</Badge></span>)}</div>{!cargando && !areas.length && <p className="help">No hay áreas disponibles.</p>}</div>}
-      {vista === "historial" && <div className="admin-directory-body"><h3>Historial administrativo</h3>{cargandoAuditoria && <p role="status">Consultando historial…</p>}{errorAuditoria && <p role="alert" className="auth-error">{errorAuditoria}</p>}{auditoria && (auditoria.length ? <ul className="real-history">{auditoria.map(a => <li key={a.id}>{a.accion} · {usuarios.find(u => u.id === a.usuario_id)?.usuario || a.usuario_id} · {new Date(a.fecha_registro).toLocaleString("es-PE", { timeZone: "America/Lima" })} · Por {usuarios.find(u => u.id === a.actor_id)?.usuario || a.actor_id}</li>)}</ul> : <p>Sin cambios administrativos registrados.</p>)}</div>}
+      {vista === "areas" && <div className="admin-directory-body">
+        <div className="admin-areas">{areas.map(dependencia => <div className="admin-area" key={dependencia.id}><span className="admin-symbol"><Icon name="reports" /></span><strong>{dependencia.nombre}</strong><Badge>{dependencia.activo ? "Activa" : "Inactiva"}</Badge></div>)}</div>
+        {!cargando && !areas.length && <p className="help">No hay áreas disponibles.</p>}
+      </div>}
+      {vista === "historial" && <div className="admin-directory-body">
+        {cargandoAuditoria && <p role="status">Consultando historial…</p>}
+        {errorAuditoria && <p role="alert" className="auth-error">{errorAuditoria}</p>}
+        {auditoria && (auditoria.length ? <ul className="real-history admin-audit-list">{auditoria.map(a => <li key={a.id}>
+          <span className="admin-symbol"><Icon name="clock" /></span>
+          <div><strong>{a.accion.toLocaleLowerCase("es").replaceAll("_", " ")}</strong><p>{nombresUsuario.get(a.usuario_id) || a.usuario_id} · Por {nombresUsuario.get(a.actor_id) || a.actor_id}</p></div>
+          <time dateTime={a.fecha_registro}>{new Date(a.fecha_registro).toLocaleString("es-PE", { timeZone: "America/Lima" })}</time>
+        </li>)}</ul> : <p>Sin cambios administrativos registrados.</p>)}
+      </div>}
     </section>
     {edicion && <DialogoAdministrativo ocupado={guardando} cerrar={() => { setEdicion(null); setError("") }}>
       <div className="admin-heading admin-dialog-heading">

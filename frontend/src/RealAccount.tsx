@@ -7,8 +7,8 @@ function CampoCuenta({ nombre, valor, icono }: { nombre: string; valor: string; 
   return <label>{nombre}<span className="account-input"><Icon name={icono} /><input readOnly value={valor} /></span></label>
 }
 
-export default function RealAccount({ token, perfil, actualizar, cargando, alCambiarClave, tema, cambiarTema }: {
-  token: string; perfil: PerfilReal; actualizar: () => Promise<void>; cargando: boolean; alCambiarClave: () => void
+export default function RealAccount({ token, perfil, alCambiarClave, tema, cambiarTema }: {
+  token: string; perfil: PerfilReal; alCambiarClave: () => void
   tema: TemaReal; cambiarTema: (preferencia: TemaReal) => void
 }) {
   const [correo, setCorreo] = useState("")
@@ -59,7 +59,6 @@ export default function RealAccount({ token, perfil, actualizar, cargando, alCam
       <span className="account-avatar" aria-hidden="true">{iniciales}</span>
       <div className="account-identity"><h3>{perfil.nombre_completo}</h3><span className="account-role"><Icon name="login-shield" />{perfil.rol}</span><p>{perfil.area_nombre || "Área no disponible"}</p></div>
       <div className="account-last-access"><Icon name="clock" /><div>Último acceso<time>{ultimoAcceso || "Sin dato disponible"}</time></div></div>
-      <button className="outline account-refresh" disabled={cargando || ocupado} onClick={() => void actualizar()}><Icon name="refresh" />Actualizar perfil</button>
     </section>
     <nav className="card account-sections" aria-label="Secciones de Mi cuenta">
       {secciones.map(({ id, titulo, icono }) => <button type="button" key={id} onClick={() => { const seccion = document.getElementById(`cuenta-${id}`); seccion?.focus(); seccion?.scrollIntoView({ block: "nearest" }) }}><Icon name={icono} />{titulo}</button>)}

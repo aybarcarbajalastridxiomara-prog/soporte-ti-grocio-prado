@@ -29,7 +29,9 @@ const titulos: Record<VistaReal, string> = {
 }
 const errorTexto = (error: unknown) => error instanceof Error ? error.message : "No se pudo completar la consulta."
 
-function CampanaAsignaciones({ token, usuarioId, abrir }: { token: string; usuarioId: string; abrir: (t: IncidenciaReal) => void }) {
+function CampanaNotificaciones({ token, usuarioId, recibeAsignaciones, abrir }: {
+  token: string; usuarioId: string; recibeAsignaciones: boolean; abrir: (t: IncidenciaReal) => void
+}) {
   const clave = "grocio-prado.avisos." + usuarioId
   const [leidos, setLeidos] = useState<string[]>(() => {
     try {
@@ -41,6 +43,7 @@ function CampanaAsignaciones({ token, usuarioId, abrir }: { token: string; usuar
   const [estado, setEstado] = useState("Consultando asignaciones…")
   const menu = useRef<HTMLDetailsElement>(null)
   useEffect(() => {
+    if (!recibeAsignaciones) return
     let vigente = true
     let consulta: AbortController | undefined
     async function actualizar() {
@@ -65,9 +68,9 @@ function CampanaAsignaciones({ token, usuarioId, abrir }: { token: string; usuar
       window.removeEventListener("focus", actualizar)
       document.removeEventListener("visibilitychange", actualizar)
     }
-  }, [token])
+  }, [token, recibeAsignaciones])
 
-  const pendientes = avisos.filter(aviso => !leidos.includes(aviso.id)).length
+  const pendientes = recibeAsignaciones ? avisos.filter(aviso => !leidos.includes(aviso.id)).length : 0
   function ver(aviso: AvisoAsignacion) {
     const nuevos = [aviso.id, ...leidos.filter(id => id !== aviso.id)].slice(0, 100)
     setLeidos(nuevos)
@@ -76,12 +79,13 @@ function CampanaAsignaciones({ token, usuarioId, abrir }: { token: string; usuar
     abrir(aviso.incidencia)
   }
   return <details className="assignment-notifications" ref={menu}>
-    <summary aria-label={"Notificaciones de asignación, " + pendientes + " sin leer"}><Icon name="bell" />{pendientes > 0 && <span aria-hidden="true">{pendientes}</span>}</summary>
+    <summary aria-label={"Notificaciones, " + pendientes + " sin leer"}><Icon name="bell" />{pendientes > 0 && <span aria-hidden="true">{pendientes}</span>}</summary>
     <div className="card assignment-notification-panel">
       <h2>Notificaciones</h2>
-      {estado && <p role="status">{estado}</p>}
-      {!estado && !avisos.length && <p>No tienes asignaciones activas de Jefatura.</p>}
-      {avisos.length > 0 && <ul>{avisos.map(aviso => <li key={aviso.id}>
+      {!recibeAsignaciones && <p>No tienes notificaciones.</p>}
+      {recibeAsignaciones && estado && <p role="status">{estado}</p>}
+      {recibeAsignaciones && !estado && !avisos.length && <p>No tienes asignaciones activas de Jefatura.</p>}
+      {recibeAsignaciones && avisos.length > 0 && <ul>{avisos.map(aviso => <li key={aviso.id}>
         <button type="button" data-sin-leer={!leidos.includes(aviso.id)} onClick={() => ver(aviso)}>
           <Icon name="login-ticket" />
           <span><strong>{aviso.incidencia.codigo} · {aviso.incidencia.asunto}</strong>
@@ -390,14 +394,14 @@ export default function RealApp() {
             <div><p className="breadcrumb">Sistema de Gestión de Incidencias</p><h1>{ticketSeleccionado ? "Detalle de incidencia" : titulos[vista]}</h1></div>
           </div>
           <div className="top-actions"><span className="connection-label"><i />Acceso institucional</span>
-            {(perfil.rol === "ASISTENTE" || perfil.rol === "PRACTICANTE") && <CampanaAsignaciones key={perfil.id} token={sesion.access_token} usuarioId={perfil.id} abrir={ticket => { navegar("incidencias"); abrirTicket(ticket) }} />}
+            <CampanaNotificaciones key={perfil.id} token={sesion.access_token} usuarioId={perfil.id} recibeAsignaciones={perfil.rol === "ASISTENTE" || perfil.rol === "PRACTICANTE"} abrir={ticket => { navegar("incidencias"); abrirTicket(ticket) }} />
             <button className="avatar avatar-button" aria-label="Abrir mi cuenta" onClick={() => navegar("cuenta")}>{iniciales}</button>
           </div>
         </header>
         <div className="page">
           {mensaje && <div className="notice real-message" role="status">{mensaje}</div>}
           {!vistaPermitida ? <div className="card empty"><h2>Esta sección requiere otro rol</h2><button className="outline" onClick={() => navegar("dashboard")}>Volver al panel</button></div> : vista === "usuarios" && jefe ? <RealAdministration token={sesion.access_token} perfil={perfil} /> : vista === "cuenta" ? (
-            <RealAccount token={sesion.access_token} perfil={perfil} actualizar={actualizar} cargando={cargando} tema={tema} cambiarTema={cambiarTema} alCambiarClave={() => { limpiarSesion(); setMensaje("Contraseña actualizada. Inicia sesión con tu nueva contraseña.") }} />
+            <RealAccount token={sesion.access_token} perfil={perfil} tema={tema} cambiarTema={cambiarTema} alCambiarClave={() => { limpiarSesion(); setMensaje("Contraseña actualizada. Inicia sesión con tu nueva contraseña.") }} />
           ) : vista === "registro" && representante ? (
             <RealRegister token={sesion.access_token} perfil={perfil} onCancelar={() => navegar("incidencias")} onCreada={async (ticket, verDetalle) => {
               navegar("incidencias")
