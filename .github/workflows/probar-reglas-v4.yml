@@ -1,0 +1,173 @@
+
+name: Probar reglas de reapertura V4
+
+on:
+  push:
+    branches:
+      - ajustes-docente-v4
+    paths:
+      - "backend/app/v4_reglas.py"
+      - ".github/workflows/probar-reglas-v4.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pruebas-reglas-v4:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Paso 109D2 - Ejecutar pruebas V4
+        shell: bash
+        env:
+          PYTHONPATH: backend
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          import unittest
+          from dataclasses import FrozenInstanceError
+
+          from app.v4_reglas import (
+              ReglaV4Invalida,
+              decidir_verificacion_v4,
+              existe_solucion_final_del_ciclo,
+          )
+
+
+          class PruebasReglasV4(unittest.TestCase):
+
+              def decidir(self, **cambios):
+                  datos = dict(
+                      estado_actual="Cerrado",
+                      ciclo_actual=1,
+                      resultado="Conformidad",
+                  )
+                  datos.update(cambios)
+                  return decidir_verificacion_v4(**datos)
+
+              def solucion(self, **cambios):
+                  datos = dict(
+                      ciclo_actual=2,
+                      ciclo_intervencion=2,
+                      es_solucion_final=True,
+                      solucion_aplicada="Equipo reparado",
+                  )
+                  datos.update(cambios)
+                  return existe_solucion_final_del_ciclo(**datos)
+
+              def test_01_conformidad_mantiene_cierre(self):
+                  d = self.decidir()
+                  self.assertEqual(d.estado_siguiente, "Cerrado")
+                  self.assertEqual(d.ciclo_siguiente, 1)
+                  self.assertFalse(d.limpiar_cierre_vigente)
+                  self.assertFalse(d.requiere_nueva_asignacion)
+
+              def test_02_conformidad_ciclo_posterior(self):
+                  d = self.decidir(ciclo_actual=3)
+                  self.assertEqual(d.estado_siguiente, "Cerrado")
+                  self.assertEqual(d.ciclo_siguiente, 3)
+
+              def test_03_observacion_reabre(self):
+                  d = self.decidir(
+                      resultado="Observación",
+                      observaciones="La falla continua",
+                  )
+                  self.assertEqual(d.estado_siguiente, "En revisión")
+                  self.assertEqual(d.ciclo_siguiente, 2)
+                  self.assertTrue(d.limpiar_cierre_vigente)
+                  self.assertTrue(d.requiere_nueva_asignacion)
+
+              def test_04_reapertura_repetida(self):
+                  d = self.decidir(
+                      ciclo_actual=3,
+                      resultado="Observación",
+                      observaciones="Persisten las fallas",
+                  )
+                  self.assertEqual(d.ciclo_siguiente, 4)
+
+              def test_05_observacion_vacia(self):
+                  for motivo in (None, "", "   "):
+                      with self.subTest(motivo=motivo):
+                          with self.assertRaises(ReglaV4Invalida):
+                              self.decidir(
+                                  resultado="Observación",
+                                  observaciones=motivo,
+                              )
+
+              def test_06_ticket_no_cerrado(self):
+                  for estado in ("Pendiente", "En revisión"):
+                      with self.subTest(estado=estado):
+                          with self.assertRaises(ReglaV4Invalida):
+                              self.decidir(estado_actual=estado)
+
+              def test_07_ciclo_invalido(self):
+                  for ciclo in (0, -1, True, 1.5, "1", None):
+                      with self.subTest(ciclo=ciclo):
+                          with self.assertRaises(ReglaV4Invalida):
+                              self.decidir(ciclo_actual=ciclo)
+
+              def test_08_resultado_desconocido(self):
+                  with self.assertRaises(ReglaV4Invalida):
+                      self.decidir(resultado="Rechazado")
+
+              def test_09_solucion_ciclo_anterior(self):
+                  self.assertFalse(
+                      self.solucion(ciclo_intervencion=1)
+                  )
+
+              def test_10_solucion_ciclo_actual(self):
+                  self.assertTrue(self.solucion())
+
+              def test_11_intervencion_no_final(self):
+                  self.assertFalse(
+                      self.solucion(es_solucion_final=False)
+                  )
+
+              def test_12_solucion_sin_descripcion(self):
+                  for valor in (None, "", "   "):
+                      with self.subTest(valor=valor):
+                          self.assertFalse(
+                              self.solucion(solucion_aplicada=valor)
+                          )
+
+              def test_13_ciclos_invalidos_en_cierre(self):
+                  self.assertFalse(
+                      self.solucion(ciclo_actual=0)
+                  )
+                  self.assertFalse(
+                      self.solucion(ciclo_actual=True)
+                  )
+                  self.assertFalse(
+                      self.solucion(ciclo_intervencion="2")
+                  )
+
+              def test_14_decision_inmutable(self):
+                  d = self.decidir()
+                  with self.assertRaises(FrozenInstanceError):
+                      d.ciclo_siguiente = 9
+
+              def test_15_resultado_determinista(self):
+                  a = self.decidir(
+                      resultado="Observación",
+                      observaciones="Falla detectada",
+                  )
+                  b = self.decidir(
+                      resultado="Observación",
+                      observaciones="Falla detectada",
+                  )
+                  self.assertEqual(a, b)
+
+
+          if __name__ == "__main__":
+              unittest.main(verbosity=2)
+          PY

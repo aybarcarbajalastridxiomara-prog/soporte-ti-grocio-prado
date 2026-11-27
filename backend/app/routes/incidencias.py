@@ -1,6 +1,7 @@
 
 from datetime import date, datetime, time, timezone
 from uuid import UUID
+from typing import Literal
 
 from fastapi import (
     APIRouter,
@@ -10,11 +11,13 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.db import get_db
+from app.lecturas_incidencias import (condicion_ciclo, condicion_visibilidad,
+    enriquecer_incidencias, exigir_lectura_tecnica)
 from app.models import (
     Asignacion,
     HistorialIncidencia,
@@ -47,6 +50,39 @@ class IncidenciaResumen(BaseModel):
     estado: EstadoIncidencia
     prioridad: str | None
     fecha_registro: datetime
+    prioridad_provisional: str | None = None
+    prioridad_revision_pendiente: bool = False
+    area_nombre: str | None = None
+    responsable_id: UUID | None = None
+    responsable_nombre: str | None = None
+    responsable_tipo: Literal["activo", "cierre", "sin_asignar"] | None = None
+    fecha_asignacion: datetime | None = None
+    duracion_atencion_minutos: int | None = None
+
+
+class AvisoAsignacion(BaseModel):
+    id: UUID
+    fecha_asignacion: datetime
+    incidencia: IncidenciaResumen
+
+
+@router.get("/avisos/asignaciones", response_model=list[AvisoAsignacion])
+def avisos_asignaciones(
+    usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    if usuario.rol not in ("ASISTENTE", "PRACTICANTE"):
+        raise HTTPException(403, "Solo el personal técnico puede consultar estos avisos.")
+    filas = db.execute(
+        select(Asignacion.id, Asignacion.fecha_asignacion, Incidencia)
+        .join(Incidencia, Incidencia.id == Asignacion.incidencia_id)
+        .where(Asignacion.tecnico_id == usuario.id,
+               Asignacion.origen_asignacion == "JEFATURA",
+               Asignacion.fecha_fin.is_(None), Incidencia.estado != "Cerrado", condicion_ciclo(db))
+        .order_by(Asignacion.fecha_asignacion.desc(), Asignacion.id.desc())
+        .limit(20)
+    )
+    return [AvisoAsignacion(id=id_aviso, fecha_asignacion=fecha, incidencia=IncidenciaResumen.model_validate(incidencia))
+            for id_aviso, fecha, incidencia in filas]
 
 class IncidenciaDetalle(BaseModel):
     """Informacion completa de una incidencia."""
@@ -125,6 +161,7 @@ class CierreRespuesta(BaseModel):
 def listar_incidencias(
     estado: EstadoIncidencia | None = None,
     limite: int = Query(default=50, ge=1, le=100),
+    mis_atenciones: bool = False,
     usuario_actual: Usuario = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -143,7 +180,18 @@ def listar_incidencias(
             detail="No tiene permiso para consultar incidencias.",
         )
 
-    consulta = select(Incidencia)
+    if mis_atenciones and usuario_actual.rol == "REPRESENTANTE":
+        raise HTTPException(403, "Solo personal TI puede consultar sus atenciones.")
+    ciclo = condicion_ciclo(db) if mis_atenciones else None
+    consulta = select(Incidencia).where(condicion_visibilidad(usuario_actual))
+
+    if mis_atenciones:
+        propia = select(Asignacion.id).where(
+            Asignacion.incidencia_id == Incidencia.id,
+            Asignacion.tecnico_id == usuario_actual.id,
+            Asignacion.fecha_fin.is_(None), ciclo,
+        ).correlate(Incidencia).exists()
+        consulta = consulta.where(propia, Incidencia.estado != "Cerrado")
 
     if usuario_actual.rol == "REPRESENTANTE":
         consulta = consulta.where(
@@ -164,7 +212,12 @@ def listar_incidencias(
         .limit(limite)
     )
 
-    return db.scalars(consulta).all()
+    registros = db.scalars(consulta).all()
+    if not registros:
+        return []
+    if ciclo is None:
+        ciclo = condicion_ciclo(db)
+    return enriquecer_incidencias(db, registros, ciclo, tecnico_id=usuario_actual.id if mis_atenciones else None)
 
 
 @router.post(
@@ -288,6 +341,31 @@ def registrar_incidencia(
 
 
 
+class ResumenGeneral(BaseModel):
+    total: int
+    pendientes: int
+    en_revision: int
+    cerradas: int
+
+
+@router.get("/resumen", response_model=ResumenGeneral)
+def consultar_resumen_general(
+    usuario_actual: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Conteos completos de PostgreSQL, con el mismo alcance del listado."""
+    if usuario_actual.rol not in {"JEFE", "ASISTENTE", "PRACTICANTE", "REPRESENTANTE"}:
+        raise HTTPException(status_code=403, detail="No tiene permiso para consultar incidencias.")
+    consulta = select(
+        func.count().label("total"),
+        func.count().filter(Incidencia.estado == "Pendiente").label("pendientes"),
+        func.count().filter(Incidencia.estado == "En revisión").label("en_revision"),
+        func.count().filter(Incidencia.estado == "Cerrado").label("cerradas"),
+    ).select_from(Incidencia)
+    consulta = consulta.where(condicion_visibilidad(usuario_actual))
+    return dict(db.execute(consulta).mappings().one())
+
+
 @router.get(
     "/{incidencia_id}",
     response_model=IncidenciaDetalle,
@@ -329,6 +407,7 @@ def consultar_detalle_incidencia(
                 detail="Incidencia no encontrada.",
             )
 
+    exigir_lectura_tecnica(db, incidencia_id, usuario_actual)
     return incidencia
 
 
@@ -343,6 +422,7 @@ def consultar_historial_incidencia(
     db: Session = Depends(get_db),
 ):
     """Consulta las acciones registradas sobre una incidencia."""
+    exigir_lectura_tecnica(db, incidencia_id, usuario_actual)
 
     roles_validos = {
         "JEFE",

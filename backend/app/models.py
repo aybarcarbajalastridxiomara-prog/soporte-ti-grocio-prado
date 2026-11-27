@@ -1,18 +1,21 @@
 
-from datetime import date, datetime, time
-from uuid import UUID
+from datetime import date, datetime, time, timezone
+from uuid import UUID, uuid4
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Column,
     FetchedValue,
     Date,
     Time,
     DateTime,
     ForeignKey,
     Integer,
+    JSON,
     String,
     Text,
+    Table,
     text,
 
 )
@@ -22,6 +25,16 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 class Base(DeclarativeBase):
     pass
+
+
+# Referencia de metadatos a la tabla que YA administra Supabase Auth.
+# No crea tablas ni concede acceso al esquema auth. Permite que SQLAlchemy
+# resuelva la FK de Usuario al ordenar INSERT/UPDATE del mapper.
+auth_users = Table(
+    "users", Base.metadata,
+    Column("id", PGUUID(as_uuid=True), primary_key=True),
+    schema="auth",
+)
 
 
 # TABLA 1: AREAS
@@ -258,3 +271,14 @@ class HistorialIncidencia(Base):
         DateTime(timezone=True),
         server_default=text("now()"),
     )
+
+
+class AuditoriaAdministrativa(Base):
+    __tablename__ = "auditoria_administrativa"
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    actor_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id"))
+    usuario_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id"))
+    accion: Mapped[str] = mapped_column(String(30))
+    anterior: Mapped[dict] = mapped_column(JSON)
+    nuevo: Mapped[dict] = mapped_column(JSON)
+    fecha_registro: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
