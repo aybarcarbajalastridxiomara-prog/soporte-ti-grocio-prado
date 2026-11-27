@@ -47,6 +47,8 @@ export type IncidenciaReal = {
   responsable_id?: string | null
   responsable_nombre?: string | null
   responsable_tipo?: "activo" | "cierre" | "sin_asignar" | null
+  fecha_asignacion?: string | null
+  duracion_atencion_minutos?: number | null
 }
 
 export type NuevaIncidencia = {

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 import test_preentrega_111a as fixtures
 from app.auth import get_identity
 from app.main import app
-from app.models import Asignacion, Incidencia, Usuario
+from app.models import Asignacion, Incidencia, Intervencion, Usuario
 from app.schemas import IncidenciaCrear
 
 
@@ -49,10 +49,18 @@ class Conciliacion112B(unittest.TestCase):
     def test_mis_atenciones_filtra_antes_del_limite_y_no_acepta_otro_actor(self):
         antigua = self.crear_asignada(dias=365)
         self.crear_asignada(rol="PRACTICANTE")
+        with Session(self.engine) as db:
+            for rol, minutos in (("ASISTENTE", 40), ("ASISTENTE", 20), ("PRACTICANTE", 10)):
+                db.add(Intervencion(id=uuid4(), incidencia_id=antigua, tecnico_id=self.ids[rol],
+                    diagnostico="Prueba", acciones_realizadas="Prueba", duracion_minutos=minutos,
+                    es_solucion_final=False, fecha_registro=datetime.now(timezone.utc)))
+            db.commit()
         self.actor = "ASISTENTE"
         respuesta = self.client.get(f'/api/incidencias?mis_atenciones=true&limite=1&tecnico_id={self.ids["PRACTICANTE"]}')
         self.assertEqual(respuesta.status_code, 200, respuesta.text)
         self.assertEqual([t["id"] for t in respuesta.json()], [str(antigua)])
+        self.assertIsNotNone(respuesta.json()[0]["fecha_asignacion"])
+        self.assertEqual(respuesta.json()[0]["duracion_atencion_minutos"], 60)
         self.actor = "JEFE"
         self.assertEqual(self.client.get("/api/incidencias?mis_atenciones=true").json(), [])
         self.crear_asignada(rol="JEFE")
@@ -67,6 +75,7 @@ class Conciliacion112B(unittest.TestCase):
         with self.engine.begin() as db:
             db.execute(text("ALTER TABLE incidencias ADD COLUMN ciclo_actual INTEGER NOT NULL DEFAULT 1"))
             db.execute(text("ALTER TABLE asignaciones ADD COLUMN ciclo_atencion INTEGER NOT NULL DEFAULT 1"))
+            db.execute(text("ALTER TABLE intervenciones ADD COLUMN ciclo_atencion INTEGER NOT NULL DEFAULT 1"))
             db.execute(text("UPDATE incidencias SET ciclo_actual=2"))
         self.actor = "ASISTENTE"
         with patch("app.lecturas_incidencias.esquema_v4_disponible", return_value=True):

@@ -1,9 +1,9 @@
 """Lecturas operativas; no modifica datos ni requiere migraciones V4."""
 from fastapi import HTTPException
-from sqlalchemy import and_, false, literal_column, or_, select, true
+from sqlalchemy import and_, false, func, literal_column, or_, select, true
 from sqlalchemy.orm import Session
 
-from app.models import Area, Asignacion, Incidencia, Usuario
+from app.models import Area, Asignacion, Incidencia, Intervencion, Usuario
 from app.v4_esquema import esquema_v4_disponible
 from app.prioridades import ultimos_eventos
 
@@ -43,7 +43,7 @@ def condicion_ciclo(db: Session):
     return true()
 
 
-def enriquecer_incidencias(db: Session, incidencias: list[Incidencia], ciclo) -> list[dict]:
+def enriquecer_incidencias(db: Session, incidencias: list[Incidencia], ciclo, *, tecnico_id=None) -> list[dict]:
     if not incidencias:
         return []
     ids = [i.id for i in incidencias]
@@ -58,21 +58,35 @@ def enriquecer_incidencias(db: Session, incidencias: list[Incidencia], ciclo) ->
         .where(Asignacion.incidencia_id.in_(ids), Asignacion.fecha_fin.is_(None), ciclo)
         .order_by(Asignacion.fecha_asignacion.desc(), Asignacion.id.desc())
     ).all()
-    responsables = {}
+    asignaciones = {}
     for asignacion in activas:
-        responsables.setdefault(asignacion.incidencia_id, asignacion.tecnico_id)
-    personas = set(responsables.values()) | {i.cerrado_por_usuario_id for i in incidencias if i.cerrado_por_usuario_id}
+        asignaciones.setdefault(asignacion.incidencia_id, asignacion)
+    personas = {a.tecnico_id for a in asignaciones.values()} | {i.cerrado_por_usuario_id for i in incidencias if i.cerrado_por_usuario_id}
     nombres = {u.id: u.nombre_completo for u in db.scalars(select(Usuario).where(Usuario.id.in_(personas)))} if personas else {}
+    duraciones = {}
+    if tecnico_id is not None:
+        ciclo_intervencion = true() if ciclo.compare(true()) else (
+            literal_column("intervenciones.ciclo_atencion") == literal_column("incidencias.ciclo_actual")
+        )
+        duraciones = dict(db.execute(
+            select(Intervencion.incidencia_id, func.sum(Intervencion.duracion_minutos))
+            .join(Incidencia, Incidencia.id == Intervencion.incidencia_id)
+            .where(Intervencion.incidencia_id.in_(ids), Intervencion.tecnico_id == tecnico_id, ciclo_intervencion)
+            .group_by(Intervencion.incidencia_id)
+        ).all())
     salida = []
     for i in incidencias:
         ultimo = prioridades.get(i.id)
         provisional = ultimo[1].nueva if ultimo and ultimo[1].provisional and i.prioridad is None else None
-        tipo = "cierre" if i.estado == "Cerrado" else "activo" if i.id in responsables else "sin_asignar"
-        responsable = i.cerrado_por_usuario_id if tipo == "cierre" else responsables.get(i.id)
+        asignacion = asignaciones.get(i.id)
+        tipo = "cierre" if i.estado == "Cerrado" else "activo" if asignacion else "sin_asignar"
+        responsable = i.cerrado_por_usuario_id if tipo == "cierre" else asignacion.tecnico_id if asignacion else None
         salida.append(dict(
             id=i.id, codigo=i.codigo, area_id=i.area_id, area_nombre=areas.get(i.area_id),
             asunto=i.asunto, estado=i.estado, prioridad=i.prioridad, fecha_registro=i.fecha_registro,
             prioridad_provisional=provisional, prioridad_revision_pendiente=provisional is not None,
             responsable_id=responsable, responsable_nombre=nombres.get(responsable), responsable_tipo=tipo,
+            fecha_asignacion=asignacion.fecha_asignacion if tipo == "activo" and asignacion else None,
+            duracion_atencion_minutos=duraciones.get(i.id),
         ))
     return salida

@@ -18,7 +18,7 @@ from app.auth import get_identity
 from app.config import get_settings
 from app.db import get_db
 from app.main import app
-from app.models import Area, Asignacion, HistorialIncidencia, Incidencia, Usuario, AuditoriaAdministrativa
+from app.models import Area, Asignacion, HistorialIncidencia, Incidencia, Intervencion, Usuario, AuditoriaAdministrativa
 
 
 class Preentrega111A(unittest.TestCase):
@@ -26,7 +26,7 @@ class Preentrega111A(unittest.TestCase):
         self.engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
         # Copias aisladas, sin FK de auth.users ni defaults PostgreSQL.
         metadata = MetaData()
-        for original in (Area.__table__, Usuario.__table__, Incidencia.__table__, Asignacion.__table__, HistorialIncidencia.__table__, AuditoriaAdministrativa.__table__):
+        for original in (Area.__table__, Usuario.__table__, Incidencia.__table__, Asignacion.__table__, Intervencion.__table__, HistorialIncidencia.__table__, AuditoriaAdministrativa.__table__):
             table = original.to_metadata(metadata)
             for constraint in list(table.foreign_key_constraints):
                 table.constraints.remove(constraint)

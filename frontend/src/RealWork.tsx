@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { listarIncidenciasReales, type IncidenciaReal } from "./api"
-import RealTicketList from "./RealTicketList"
+import RealTicketList, { BannerIncidencias } from "./RealTicketList"
 import { Icon } from "./RealUI"
 
 export default function RealWork({ token, abrirDetalle }: { token: string; abrirDetalle: (t: IncidenciaReal) => void }) {
@@ -17,5 +17,11 @@ export default function RealWork({ token, abrirDetalle }: { token: string; abrir
       .finally(() => { if (vigente) setCargando(false) })
     return () => { vigente = false }
   }, [token, recarga])
-  return <><div className="welcome"><div><h2>Mis atenciones</h2><p>Seleccione una de sus incidencias activas para documentar la atención.</p></div><button className="outline" disabled={cargando} onClick={() => setRecarga(n => n + 1)}><Icon name="refresh" />Actualizar</button></div>{error && <p role="alert" className="auth-error">{error}</p>}<RealTicketList titulo="Incidencias asignadas a mí" tituloVacio="No tienes incidencias asignadas" descripcion="Últimos 50 registros con asignación activa propia, consultados en el servidor" incidencias={incidencias} cargando={cargando} disponible={disponible} abrirDetalle={abrirDetalle} /></>
+  return <div className="incident-directory incident-work">
+    <BannerIncidencias titulo="Mis atenciones" descripcion="Gestiona y documenta la atención de tus incidencias asignadas." />
+    {error && <p role="alert" className="auth-error">{error}</p>}
+    <RealTicketList vistaCompleta={{ modo: "atenciones" }} titulo="Incidencias asignadas a mí" tituloVacio="No tienes incidencias asignadas"
+      descripcion="Últimos 50 registros con asignación activa propia" incidencias={incidencias} cargando={cargando} disponible={disponible} abrirDetalle={abrirDetalle}
+      accion={<button className="outline" disabled={cargando} onClick={() => setRecarga(n => n + 1)}><Icon name="refresh" />Actualizar</button>} />
+  </div>
 }

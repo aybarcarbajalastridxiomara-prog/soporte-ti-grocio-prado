@@ -979,9 +979,8 @@
 .real-app .institutional-heading { display: flex; align-items: center; gap: 12px; }
 .real-app .institutional-heading > .icon { flex: 0 0 30px; height: 30px; color: var(--form-accent, #075ab5); }
 .real-app .real-account { display: grid; gap: 14px; }
-.real-app .real-account .page-title-row { margin: 0; padding: 14px 20px; border: 1px solid var(--form-frame, #d5e3f5); border-radius: 14px; }
-.real-app .real-account .page-title-row > button { display: inline-flex; align-items: center; gap: 6px; }
-.real-app .account-summary { display: flex; align-items: center; gap: 18px; padding: 17px 22px; background: var(--form-surface, #f6faff); }
+.real-app .account-refresh { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.real-app .account-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; padding: 17px 22px; background: var(--form-surface, #f6faff); }
 .real-app .account-avatar {
   display: grid;
   place-items: center;
@@ -1073,6 +1072,10 @@
   grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(215px, 1.15fr);
   gap: 10px 13px;
 }
+.real-app .incident-work .incident-filter-grid {
+  grid-template-columns: minmax(165px, 2fr) repeat(3, minmax(92px, 1fr)) auto;
+}
+.real-app .incident-work .incident-search-label { grid-column: auto; }
 .real-app .incident-filter-grid label { display: grid; min-width: 0; gap: 4px; font-weight: 600; font-size: .82rem; }
 .real-app .incident-filter-grid label > span { display: flex; align-items: center; gap: 6px; }
 .real-app .incident-filter-grid label .icon { width: 15px; height: 15px; color: #335d88; flex-shrink: 0; }
@@ -1116,6 +1119,8 @@
 .real-app .incident-directory .incident-subject .icon { flex: 0 0 15px; height: 15px; color: #225788; }
 .real-app .incident-owner-avatar { display: inline-grid; flex: 0 0 25px; place-items: center; height: 25px; border-radius: 50%; background: #deecfb; color: #1c5590; font-size: .67rem; font-weight: 700; }
 .real-app .incident-owner-avatar .icon { width: 13px; height: 13px; }
+.real-app .incident-duration { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 16px; background: #e0f5e9; color: #126745; font-weight: 700; }
+.real-app .incident-duration .icon { width: 14px; height: 14px; }
 .real-app .incident-in-review .badge { background: #eee8ff; color: #593ac0; }
 .real-app .incident-directory [data-prioridad="Media"] .badge { background: #fff1d9; color: #815000; }
 .real-app .incident-directory [data-prioridad="Baja"] .badge { background: #e0f5e9; color: #126745; }
@@ -1130,14 +1135,14 @@
 .real-app[data-tema="oscuro"] .incident-directory .real-ticket-table tbody tr:nth-child(even) td { background: #192c43; }
 
 @media (max-width: 1180px) {
-  .real-app .incident-filter-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .real-app .incident-directory .incident-filter-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .real-app .incident-filter-actions { grid-column: 1 / -1; }
 }
 @media (max-width: 740px) {
-  .real-app .incident-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .real-app .incident-directory .incident-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 440px) {
-  .real-app .incident-filter-grid { grid-template-columns: minmax(0, 1fr); }
+  .real-app .incident-directory .incident-filter-grid { grid-template-columns: minmax(0, 1fr); }
   .real-app .incident-search-label { grid-column: auto; }
   .real-app .incident-filter-actions { justify-content: stretch; }
   .real-app .incident-filter-actions button { flex: 1; }

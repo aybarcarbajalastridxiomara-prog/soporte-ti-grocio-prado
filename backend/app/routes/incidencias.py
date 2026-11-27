@@ -56,6 +56,8 @@ class IncidenciaResumen(BaseModel):
     responsable_id: UUID | None = None
     responsable_nombre: str | None = None
     responsable_tipo: Literal["activo", "cierre", "sin_asignar"] | None = None
+    fecha_asignacion: datetime | None = None
+    duracion_atencion_minutos: int | None = None
 
 class IncidenciaDetalle(BaseModel):
     """Informacion completa de una incidencia."""
@@ -190,7 +192,7 @@ def listar_incidencias(
         return []
     if ciclo is None:
         ciclo = condicion_ciclo(db)
-    return enriquecer_incidencias(db, registros, ciclo)
+    return enriquecer_incidencias(db, registros, ciclo, tecnico_id=usuario_actual.id if mis_atenciones else None)
 
 
 @router.post(

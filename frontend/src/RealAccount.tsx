@@ -55,14 +55,11 @@ export default function RealAccount({ token, perfil, actualizar, cargando, alCam
     { id: "nueva", titulo: "Nueva contraseña", valor: nueva, cambiar: setNueva },
     { id: "confirmar", titulo: "Confirmar nueva contraseña", valor: confirmacion, cambiar: setConfirmacion }]
   return <div className="real-account">
-    <div className="page-title-row institutional-hero">
-      <div className="institutional-heading"><Icon name="user" /><div><h2>Mi cuenta</h2><p>Consulta tu perfil y gestiona tus credenciales y preferencias.</p></div></div>
-      <button className="outline" disabled={cargando || ocupado} onClick={() => void actualizar()}><Icon name="refresh" />Actualizar perfil</button>
-    </div>
     <section className="card account-summary" aria-label="Resumen de la cuenta">
       <span className="account-avatar" aria-hidden="true">{iniciales}</span>
       <div className="account-identity"><h3>{perfil.nombre_completo}</h3><span className="account-role"><Icon name="login-shield" />{perfil.rol}</span><p>{perfil.area_nombre || "Área no disponible"}</p></div>
       <div className="account-last-access"><Icon name="clock" /><div>Último acceso<time>{ultimoAcceso || "Sin dato disponible"}</time></div></div>
+      <button className="outline account-refresh" disabled={cargando || ocupado} onClick={() => void actualizar()}><Icon name="refresh" />Actualizar perfil</button>
     </section>
     <nav className="card account-sections" aria-label="Secciones de Mi cuenta">
       {secciones.map(({ id, titulo, icono }) => <button type="button" key={id} onClick={() => { const seccion = document.getElementById(`cuenta-${id}`); seccion?.focus(); seccion?.scrollIntoView({ block: "nearest" }) }}><Icon name={icono} />{titulo}</button>)}

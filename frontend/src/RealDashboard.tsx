@@ -2,7 +2,7 @@ import { useState, type CSSProperties } from "react"
 import type { IncidenciaReal, PerfilReal, ResumenReal } from "./api"
 import type { VistaReal } from "./RealApp"
 import { Icon } from "./RealUI"
-import RealTicketList from "./RealTicketList"
+import RealTicketList, { BannerIncidencias } from "./RealTicketList"
 
 type Props = {
   vista: VistaReal; perfil: PerfilReal; incidencias: IncidenciaReal[]; resumen: ResumenReal | null
@@ -86,11 +86,9 @@ export default function RealDashboard({ vista, perfil, incidencias, resumen, car
   </div>
 
   if (vista !== "dashboard") return <div className="incident-directory">
-    <div className="real-shell-greeting incident-hero">
-      <div><h2>{representante ? "Incidencias de mi área" : "Listado de incidencias"}</h2><p>{representante ? "Consulta y da seguimiento a las solicitudes registradas en tu área." : "Consulta, filtra y da seguimiento a las incidencias registradas."}</p></div>
-      <div className="real-dashboard-banner-art" aria-hidden="true"><span className="real-access-laptop"><Icon name="login-headset" /></span></div>
-    </div>
-    <RealTicketList expandida incidencias={incidencias} cargando={cargando} disponible={Boolean(actualizado)} actualizado={actualizado} titulo="Incidencias registradas" accion={acciones} abrirDetalle={abrirDetalle} />
+    <BannerIncidencias titulo={representante ? "Incidencias de mi área" : "Listado de incidencias"}
+      descripcion={representante ? "Consulta y da seguimiento a las solicitudes registradas en tu área." : "Consulta, filtra y da seguimiento a las incidencias registradas."} />
+    <RealTicketList vistaCompleta={{ modo: "incidencias", rol: perfil.rol, usuarioId: perfil.id }} incidencias={incidencias} cargando={cargando} disponible={Boolean(actualizado)} actualizado={actualizado} titulo="Incidencias registradas" accion={acciones} abrirDetalle={abrirDetalle} />
   </div>
 
   const basePanel = tecnico ? incidencias.filter(t => t.responsable_id === perfil.id &&
