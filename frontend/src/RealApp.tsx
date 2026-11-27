@@ -20,6 +20,7 @@ import "./RealLogin.css"
 const estiloFormularios = import.meta.env.VITE_ESTILO_FORMULARIOS === "false" ? "" : " forms-refresh"
 
 export type VistaReal = "dashboard" | "incidencias" | "asignaciones" | "atencion" | "usuarios" | "cuenta" | "registro" | "reportes"
+export type TemaReal = "claro" | "oscuro"
 const titulos: Record<VistaReal, string> = {
   dashboard: "Panel principal", incidencias: "Incidencias", asignaciones: "Asignaciones",
   atencion: "Atención técnica", usuarios: "Usuarios y áreas", cuenta: "Mi cuenta", registro: "Registrar incidencia",
@@ -28,6 +29,14 @@ const titulos: Record<VistaReal, string> = {
 const errorTexto = (error: unknown) => error instanceof Error ? error.message : "No se pudo completar la consulta."
 
 export default function RealApp() {
+  const [tema, setTema] = useState<TemaReal>(() => {
+    try { return localStorage.getItem("grocio-prado.tema") === "oscuro" ? "oscuro" : "claro" }
+    catch { return "claro" }
+  })
+  function cambiarTema(preferencia: TemaReal) {
+    setTema(preferencia)
+    try { localStorage.setItem("grocio-prado.tema", preferencia) } catch { /* Mantener la elección en esta sesión. */ }
+  }
   const [correo, setCorreo] = useState("")
   const [contrasena, setContrasena] = useState("")
   const [mostrarClave, setMostrarClave] = useState(false)
@@ -285,7 +294,7 @@ export default function RealApp() {
   const iniciales = perfil.nombre_completo.split(" ").filter(Boolean).map((x) => x[0]).slice(0, 2).join("")
 
   return (
-    <main className={`app-shell real-app${estiloFormularios}`}>
+    <main className={`app-shell real-app${estiloFormularios}`} data-tema={tema}>
       {menu && <button className="sidebar-backdrop" aria-label="Cerrar menú" onClick={() => setMenu(false)} />}
       <aside id="menu-principal" className={`sidebar real-sidebar${menu ? " open" : ""}`}>
         <div className="real-sidebar-municipio">
@@ -321,7 +330,7 @@ export default function RealApp() {
         <div className="page">
           {mensaje && <div className="notice real-message" role="status">{mensaje}</div>}
           {!vistaPermitida ? <div className="card empty"><h2>Esta sección requiere otro rol</h2><button className="outline" onClick={() => navegar("dashboard")}>Volver al panel</button></div> : vista === "usuarios" && jefe ? <RealAdministration token={sesion.access_token} perfil={perfil} /> : vista === "cuenta" ? (
-            <RealAccount token={sesion.access_token} perfil={perfil} actualizar={actualizar} cargando={cargando} alCambiarClave={() => { limpiarSesion(); setMensaje("Contraseña actualizada. Inicia sesión con tu nueva contraseña.") }} />
+            <RealAccount token={sesion.access_token} perfil={perfil} actualizar={actualizar} cargando={cargando} tema={tema} cambiarTema={cambiarTema} alCambiarClave={() => { limpiarSesion(); setMensaje("Contraseña actualizada. Inicia sesión con tu nueva contraseña.") }} />
           ) : vista === "registro" && representante ? (
             <RealRegister token={sesion.access_token} perfil={perfil} onCancelar={() => navegar("incidencias")} onCreada={async (codigo) => { navegar("incidencias"); setMensaje(`Incidencia ${codigo} registrada correctamente.`); await cargarDatos(sesion.access_token) }} />
           ) : ticketSeleccionado ? (

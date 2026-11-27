@@ -47,6 +47,8 @@ def enviar_correo_auth(ruta: str, correo: str) -> bytes:
     )
     if code == 429:
         raise HTTPException(429, "Supabase limitó el envío. Intenta más tarde.")
+    if ruta == "invite" and code == 422:
+        raise HTTPException(409, "Supabase no aceptó una nueva invitación para ese correo.")
     if code not in (200, 201, 204):
         raise HTTPException(502, "Supabase no aceptó el envío. Actualiza el directorio y comprueba la configuración de correo.")
     return body

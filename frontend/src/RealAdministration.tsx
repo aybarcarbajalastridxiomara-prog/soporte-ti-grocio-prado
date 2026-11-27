@@ -7,20 +7,19 @@ type Configuracion = { permisos_verificados?: boolean; edicion_habilitada: boole
 type Persona = PerfilReal & { archivado?: boolean; correo?: string | null; activacion?: "ACTIVADA" | "PENDIENTE" | "DESCONOCIDA" }
 const acciones = {
   reenviar: "Reenviar invitación de activación", recuperar: "Enviar recuperación de contraseña",
-  habilitar: "Rehabilitar usuario", deshabilitar: "Deshabilitar usuario", archivar: "Archivar usuario",
+  habilitar: "Rehabilitar usuario", deshabilitar: "Deshabilitar usuario",
   restaurar: "Restaurar sin habilitar", restaurar_habilitado: "Restaurar y habilitar", eliminar: "Eliminar definitivamente",
 }
 type Accion = keyof typeof acciones
 const iconosAccion: Record<Accion, string> = {
   reenviar: "login-mail", recuperar: "login-mail", habilitar: "user-add",
-  deshabilitar: "login-lock", archivar: "archive", restaurar: "refresh", restaurar_habilitado: "user-add", eliminar: "trash",
+  deshabilitar: "login-lock", restaurar: "refresh", restaurar_habilitado: "user-add", eliminar: "trash",
 }
 const advertencias: Record<Accion, string> = {
   reenviar: "Se enviará un nuevo enlace al correo registrado.",
   recuperar: "Se enviará un enlace de recuperación al correo registrado.",
   habilitar: "Se permitirá el acceso al sistema según el rol actual.",
   deshabilitar: "Se bloqueará su acceso y dejará de estar disponible para nuevas asignaciones.",
-  archivar: "Se retirará su acceso y el perfil quedará en el filtro Archivado. El historial se conserva.",
   restaurar: "El perfil volverá al directorio y su acceso seguirá deshabilitado.",
   restaurar_habilitado: "El perfil volverá al directorio con el acceso habilitado. Si la cuenta está pendiente, el usuario aún debe completar la activación.",
   eliminar: "Se eliminarán la cuenta de Auth y el perfil si carecen de dependencias históricas. Esta acción es irreversible.",
@@ -44,7 +43,7 @@ function MenuPerfil({ persona, propio, configuracion, abrir, pedirAccion }: {
   const autorizado = configuracion?.edicion_habilitada === true
   const editar = autorizado && !persona.archivado
   const enlace = persona.activacion === "ACTIVADA" ? "recuperar" : "reenviar"
-  const mostrarEnlace = editar && (!ampliada || Boolean(persona.correo) && (persona.activacion === "ACTIVADA" || persona.activacion === "PENDIENTE"))
+  const mostrarEnlace = autorizado && !persona.archivado
   const administrar = autorizado && !propio
   const requiereMigracion = "Disponible cuando se aplique la migración de Gestión de usuarios."
   function elegir(accion: () => void) {
@@ -61,7 +60,7 @@ function MenuPerfil({ persona, propio, configuracion, abrir, pedirAccion }: {
       const panel = menu.current
       if (!panel || panel.matches(":popover-open")) return
       const ancla = evento.currentTarget.getBoundingClientRect()
-      const alto = (1 + Number(editar) + Number(mostrarEnlace) + (administrar ? 3 : 0)) * 35 + (administrar ? (persona.archivado ? 56 : 76) : 14)
+      const alto = (1 + Number(editar) + Number(mostrarEnlace) + (administrar ? (persona.archivado ? 3 : 2) : 0)) * 42 + (administrar ? 56 : 14)
       const espacioAbajo = window.innerHeight - ancla.bottom - 10
       const arriba = espacioAbajo < alto && ancla.top - 10 > espacioAbajo
       panel.style.left = `${Math.max(8, Math.min(ancla.right - 236, window.innerWidth - 244))}px`
@@ -74,21 +73,17 @@ function MenuPerfil({ persona, propio, configuracion, abrir, pedirAccion }: {
       <div className="admin-menu-group">
         <button type="button" onClick={() => elegir(() => abrir(persona, true))}><Icon name="login-eye" />Ver perfil</button>
         {editar && <button className="admin-menu-editar" type="button" onClick={() => elegir(() => abrir(persona))}><Icon name="tool" />Editar perfil</button>}
-        {mostrarEnlace && opcion(enlace, !ampliada ? requiereMigracion : !configuracion?.invitaciones_habilitadas ? "El envío de correos está restringido." : undefined)}
+        {mostrarEnlace && opcion(enlace, !ampliada ? requiereMigracion : !configuracion?.invitaciones_habilitadas ? "El envío de correos está restringido." : !persona.correo ? "La cuenta no tiene correo registrado en Supabase Auth." : undefined)}
       </div>
       {administrar && <>
         <div className="admin-menu-group">
           {persona.archivado ? <>
             {opcion("restaurar_habilitado", ampliada ? undefined : requiereMigracion)}
             {opcion("restaurar", ampliada ? undefined : requiereMigracion)}
-          </> : <>
-            {opcion(persona.habilitado ? "deshabilitar" : "habilitar")}
-            {opcion("archivar", ampliada ? undefined : requiereMigracion)}
-          </>}
+          </> : opcion(persona.habilitado ? "deshabilitar" : "habilitar")}
         </div>
         <div className="admin-menu-group">
-          {opcion("eliminar", !ampliada ? requiereMigracion : !persona.archivado ? "Archiva primero este perfil." : undefined)}
-          {ampliada && !persona.archivado && <small className="admin-menu-note">Primero archiva el perfil para poder eliminarlo.</small>}
+          {opcion("eliminar", !ampliada ? requiereMigracion : undefined)}
         </div>
       </>}
     </div>
@@ -258,7 +253,7 @@ export default function RealAdministration({ token, perfil }: { token: string; p
     {mensaje && <div className="notice" role="status">{mensaje}</div>}
     {!edicion && !confirmacion && error && <div className="auth-error" role="alert">{error}</div>}
     {configuracion && configuracion.motivos.length > 0 && <details className="notice observation-notice admin-warning"><summary>Configuración administrativa pendiente</summary>{configuracion.motivos.map(motivo => <p key={motivo}>{motivo}</p>)}</details>}
-    {configuracion?.edicion_habilitada && !configuracion.gestion_ampliada && <div className="notice observation-notice admin-warning">Los estados de activación, el reenvío y el archivo requieren la migración de gestión de usuarios.</div>}
+    {configuracion?.edicion_habilitada && !configuracion.gestion_ampliada && <div className="notice observation-notice admin-warning">Los estados de activación, el reenvío y la eliminación requieren la migración de gestión de usuarios.</div>}
     <div className="admin-summary">
       <div className="admin-card"><span className="admin-symbol"><Icon name="users" /></span><div><h3>Usuarios registrados</h3><strong>{cargando || error ? "—" : usuarios.length}</strong><button type="button" className="text-button" onClick={() => setVista("usuarios")}>Administrar cuentas <Icon name="arrow" /></button></div></div>
       <div className="admin-card"><span className="admin-symbol"><Icon name="reports" /></span><div><h3>Áreas municipales</h3><strong>{cargando || error ? "—" : areas.length}</strong><button type="button" className="text-button" onClick={() => setVista("areas")}>Consultar áreas <Icon name="arrow" /></button></div></div>

@@ -195,6 +195,26 @@ class Preentrega111A(unittest.TestCase):
         with Session(self.engine) as db:
             self.assertFalse(db.get(Usuario, tecnico).habilitado)
 
+    def test_reenvio_usa_enlace_al_mismo_correo_si_auth_rechaza_reinvitar(self):
+        from fastapi import HTTPException
+
+        tecnico = self.ids["ASISTENTE"]
+        with Session(self.engine) as db:
+            db.get(Usuario, tecnico).fecha_creacion = datetime.now(timezone.utc) - timedelta(days=1)
+            db.commit()
+        cuenta = {"id": tecnico, "correo": "tecnico@example.test", "activado": False,
+                  "confirmado": False, "invitado": True}
+        prefijo = "app.routes.usuarios."
+        with patch(prefijo + "gestion_ampliada_disponible", return_value=True), \
+             patch(prefijo + "perfil_archivado", return_value=False), \
+             patch(prefijo + "directorio_auth", return_value=[cuenta]), \
+             patch(prefijo + "invitar_en_supabase", side_effect=HTTPException(409)), \
+             patch(prefijo + "consultar_correo_supabase", return_value=cuenta["correo"]), \
+             patch(prefijo + "recuperar_en_supabase") as enviar:
+            resultado = self.client.post(f"/api/usuarios/{tecnico}/acciones", json={"accion": "reenviar"})
+            self.assertEqual(resultado.status_code, 200, resultado.text)
+            enviar.assert_called_once_with(cuenta["correo"])
+
     def test_permiso_db_no_verificado_bloquea_edicion_e_invitacion(self):
         with patch("app.routes.usuarios.permisos_administrativos_verificados", return_value=False), patch("app.routes.usuarios.invitar_en_supabase") as externo:
             self.assertEqual(self.client.patch(f'/api/usuarios/{self.ids["ASISTENTE"]}',json={"habilitado":False}).status_code,503)

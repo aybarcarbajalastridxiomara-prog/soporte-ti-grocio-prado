@@ -234,7 +234,7 @@ def listar_usuarios(
                 perfil.correo = cuenta["correo"]
                 if cuenta["activado"]:
                     perfil.activacion = "ACTIVADA"
-                elif cuenta["invitado"]:
+                elif cuenta["correo"]:
                     perfil.activacion = "PENDIENTE"
     return perfiles
 
@@ -421,7 +421,7 @@ def reenviar_acceso(db: Session, jefe: Usuario, usuario: Usuario, accion: str) -
     if not cuenta or not cuenta["correo"]:
         raise HTTPException(409, "El perfil no tiene un correo de Auth disponible.")
     activado = cuenta["activado"]
-    if accion == "reenviar" and (activado or not cuenta["invitado"]):
+    if accion == "reenviar" and activado:
         raise HTTPException(409, "Este perfil no tiene una invitación pendiente. Actualiza el directorio.")
     if accion == "recuperar" and not activado:
         raise HTTPException(409, "La cuenta todavía no está activada. Actualiza el directorio.")
@@ -460,14 +460,24 @@ def reenviar_acceso(db: Session, jefe: Usuario, usuario: Usuario, accion: str) -
     if vigente != cuenta:
         raise HTTPException(409, "El estado de la cuenta cambió. Actualiza el directorio.")
 
-    if accion == "recuperar" or cuenta["confirmado"]:
+    if accion == "recuperar" or cuenta["confirmado"] or not cuenta["invitado"]:
         # Un invitado que abrió el primer enlace puede haber confirmado su correo
         # sin establecer su contraseña. Auth rechaza un nuevo /invite en ese caso.
         recuperar_en_supabase(cuenta["correo"])
     else:
-        respuesta = invitar_en_supabase(cuenta["correo"])
-        if respuesta.get("id") != str(usuario_id):
-            raise HTTPException(502, "Supabase no confirmó el reenvío para el perfil esperado.")
+        try:
+            respuesta = invitar_en_supabase(cuenta["correo"])
+        except HTTPException as fallo:
+            if fallo.status_code != 409:
+                raise
+            # Algunos estados de una cuenta existente rechazan /invite. La
+            # recuperación solo se intenta si Auth confirma el mismo correo.
+            if consultar_correo_supabase(usuario_id) != cuenta["correo"]:
+                raise HTTPException(409, "El correo registrado cambió. Actualiza el directorio.") from None
+            recuperar_en_supabase(cuenta["correo"])
+        else:
+            if respuesta.get("id") != str(usuario_id):
+                raise HTTPException(502, "Supabase no confirmó el reenvío para el perfil esperado.")
     return {"mensaje": "Supabase aceptó el envío al correo registrado."}
 
 
@@ -492,7 +502,7 @@ def administrar_usuario(
         return reenviar_acceso(db, jefe, usuario, accion)
     if usuario_id == jefe.id:
         raise HTTPException(409, "No puedes cambiar el acceso ni retirar tu propio perfil.")
-    if archivado != (accion in ("restaurar", "restaurar_habilitado", "eliminar")):
+    if accion != "eliminar" and archivado != (accion in ("restaurar", "restaurar_habilitado")):
         raise HTTPException(409, "La acción no corresponde al estado del perfil. Actualiza el directorio.")
     if accion in ("habilitar", "deshabilitar") and usuario.habilitado == (accion == "habilitar"):
         raise HTTPException(409, "El perfil ya se encuentra en ese estado.")
@@ -502,6 +512,11 @@ def administrar_usuario(
 
     try:
         if accion == "eliminar":
+            if not archivado:
+                # La función SQL existente exige un perfil archivado. Ambos cambios
+                # van en la misma transacción y se revierten si hay dependencias.
+                db.execute(text("UPDATE public.usuarios SET archivado = true, habilitado = false WHERE id = :id"),
+                           {"id": usuario_id})
             db.execute(text("SELECT public.eliminar_perfil_sin_historial(:jefe, :id)"),
                        {"jefe": jefe.id, "id": usuario_id})
         else:
@@ -520,7 +535,7 @@ def administrar_usuario(
         db.rollback()
         codigo = getattr(getattr(error, "orig", None), "sqlstate", None)
         if accion == "eliminar" and codigo in ("23001", "23503"):
-            raise HTTPException(409, "El perfil tiene dependencias históricas. Consérvalo archivado.") from None
+            raise HTTPException(409, "El perfil tiene dependencias históricas. Puedes conservarlo deshabilitado.") from None
         if codigo == "P0001":
             raise HTTPException(409, "El área alcanzó el cupo autorizado de representantes.") from None
         raise HTTPException(503, "No se pudo completar la acción administrativa.") from None

@@ -907,7 +907,6 @@
   padding-top: 10px;
   border-top: 1px solid #e7eaf0;
 }
-.real-admin .admin-menu-note { display: block; padding: 0 3px 5px 27px; color: #4b6480; line-height: 1.3; }
 .real-admin .admin-action-menu button {
   display: flex;
   align-items: center;
@@ -969,4 +968,93 @@
   .real-admin .admin-profile-fields { grid-template-columns: 1fr; }
   .real-admin .admin-tabs { padding: 0 5px; }
   .real-admin .admin-tabs button { padding-inline: 7px; }
+}
+
+/* Superficies institucionales compartidas */
+.real-app .institutional-hero {
+  background: radial-gradient(ellipse at 99% 145%, #69aff25c 0 37%, transparent 38%),
+    radial-gradient(ellipse at 87% 115%, #b7dbfa85 0 38%, transparent 39%), var(--form-hero, #eaf4ff);
+  flex-wrap: wrap;
+}
+.real-app .institutional-heading { display: flex; align-items: center; gap: 12px; }
+.real-app .institutional-heading > .icon { flex: 0 0 30px; height: 30px; color: var(--form-accent, #075ab5); }
+.real-app .real-account { display: grid; gap: 14px; }
+.real-app .real-account .page-title-row { margin: 0; padding: 14px 20px; border: 1px solid var(--form-frame, #d5e3f5); border-radius: 14px; }
+.real-app .real-account .page-title-row > button { display: inline-flex; align-items: center; gap: 6px; }
+.real-app .account-summary { display: flex; align-items: center; gap: 18px; padding: 17px 22px; background: var(--form-surface, #f6faff); }
+.real-app .account-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(#eff7ff, #c9e0fa);
+  color: #224e7e;
+  font-size: 1.45rem;
+  font-weight: 700;
+}
+.real-app .account-identity { flex: 1; min-width: 0; }
+.real-app .account-identity h3 { margin: 0 0 5px; font-size: 1.15rem; overflow-wrap: anywhere; }
+.real-app .account-identity p { margin: 5px 0 0; color: var(--form-muted, #46678b); }
+.real-app .account-role { display: inline-flex; align-items: center; gap: 5px; border-radius: 20px; padding: 4px 9px; background: #dceeff; color: #064f9b; font-size: .78rem; font-weight: 700; }
+.real-app .account-role .icon { width: 15px; height: 15px; }
+.real-app .account-last-access { display: flex; gap: 8px; align-items: center; padding-left: 15px; border-left: 1px solid var(--form-frame, #d5e3f5); color: var(--form-muted, #365e86); }
+.real-app .account-last-access time { display: block; font-weight: 600; }
+.real-app .account-sections { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 8px; }
+.real-app .account-sections button { display: flex; align-items: center; gap: 7px; padding: 10px 13px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--form-accent, #075ab5); font-weight: 650; }
+.real-app .account-sections button:is(:hover, :focus-visible) { border-bottom-color: currentColor; }
+.real-app .account-secondary { display: grid; gap: 14px; align-content: start; min-width: 0; }
+.real-app .real-account-grid { align-items: start; gap: 14px; }
+.real-app .real-account .account-pane { padding: 0; overflow: hidden; }
+.real-app .account-pane-title { display: flex; align-items: center; gap: 11px; padding: 14px 17px; background: var(--form-hero, #eaf4ff); }
+.real-app .account-pane-title > .icon { width: 24px; height: 24px; flex-shrink: 0; color: var(--form-accent, #075ab5); }
+.real-app .account-pane-title h3, .real-app .account-pane-title p { margin: 0; }
+.real-app .account-pane-title p { color: var(--form-muted, #486682); margin-top: 3px; }
+.real-app .account-pane-content { display: grid; gap: 10px; padding: 14px 17px; }
+.real-app .account-pane-content label, .real-app .account-pane-content .notice { margin: 0; }
+.real-app .account-pane-content .form-row > label { min-width: 0; }
+.real-app .account-input { position: relative; display: flex; align-items: center; margin-top: 4px; }
+.real-app .account-input > .icon { position: absolute; left: 11px; width: 16px; height: 16px; color: var(--form-muted, #41658a); pointer-events: none; }
+.real-app .account-pane-content .account-input input { width: 100%; min-width: 0; margin: 0; padding-left: 35px; }
+.real-app .account-password .account-input input { padding-right: 43px; }
+.real-app .account-input button { position: absolute; right: 3px; display: grid; place-items: center; width: 37px; height: 35px; border: 0; background: transparent; color: var(--form-muted, #41658a); }
+.real-app .account-state-label { margin: 3px 0 -7px; font-weight: 650; }
+.real-app .account-state { display: flex; align-items: center; gap: 7px; margin: 0; padding: 7px 10px; border-radius: 8px; font-weight: 650; background: #f4eee0; color: #73500d; }
+.real-app .account-state.enabled { background: #e0f7ec; color: #12593a; }
+.real-app .account-pane-content > button { justify-self: center; }
+.real-app .account-preference { grid-template-columns: 1fr auto; align-items: center; }
+.real-app .account-theme { display: flex; gap: 5px; padding: 4px; border: 1px solid var(--form-frame, #d5e3f5); border-radius: 10px; }
+.real-app .account-theme button { border: 0; border-radius: 6px; padding: 8px 12px; background: transparent; color: var(--form-ink, #163b66); }
+.real-app .account-theme button[aria-pressed="true"] { background: #dbeeff; color: #0756a2; font-weight: 700; }
+.real-app.forms-refresh .real-reports .report-filter-card > .section-head { gap: 12px; flex-wrap: wrap; }
+.real-app .report-breakdown h3 { display: flex; align-items: center; gap: 7px; }
+.real-app .report-breakdown h3 .icon { color: var(--form-accent, #075ab5); }
+.real-app .real-reports .kpi-icon.violet { background: #eae3ff; color: #5e3cb1; }
+
+.real-app[data-tema="oscuro"] {
+  color-scheme: dark;
+  --form-ink: #e3edfa;
+  --form-muted: #b3c6df;
+  --form-frame: #364f6e;
+  --form-accent: #8ecaff;
+  --form-hero: linear-gradient(110deg, #172d46, #233c59);
+  --form-surface: #14253a;
+  color: #e3edfa;
+  background: #101d2e;
+}
+.real-app[data-tema="oscuro"] :is(.content, .page, .topbar) { color: #e3edfa; background: #101d2e; }
+.real-app[data-tema="oscuro"] :is(.card, .modal, .kpi, .admin-card, .admin-action-menu) { background: #14253a; border-color: #364f6e; color: #e3edfa; }
+.real-app[data-tema="oscuro"] :is(.card, .modal, .kpi, .admin-card, .topbar, .page-title-row) :is(h1, h2, h3, h4, label, .help, .code, .breadcrumb) { color: #e3edfa; }
+.real-app[data-tema="oscuro"] :is(input, select, textarea, button.outline, .admin-search-field, .admin-menu-trigger) { background: #172d46; color: #e3edfa; border-color: #526e8b; }
+.real-app[data-tema="oscuro"] :is(th, .admin-tabs, .report-applied span, .notice, .section-head, .form-section-title) { background: #203a54; border-color: #364f6e; color: #e3edfa; }
+.real-app[data-tema="oscuro"] td { background: #14253a; border-color: #364f6e; color: #e3edfa; }
+.real-app[data-tema="oscuro"] .admin-action-menu button { color: #e3edfa; }
+.real-app[data-tema="oscuro"] .admin-action-menu button:not(:disabled):hover { background: #203a54; }
+.real-app[data-tema="oscuro"] .admin-action-menu .admin-menu-eliminar { color: #ffb3b3; }
+
+@media (max-width: 520px) {
+  .real-app .account-summary { flex-wrap: wrap; gap: 12px; }
+  .real-app .account-last-access { width: 100%; border: 0; padding: 0; }
+  .real-app .account-preference { grid-template-columns: 1fr; }
+  .real-app .account-theme { width: fit-content; }
 }

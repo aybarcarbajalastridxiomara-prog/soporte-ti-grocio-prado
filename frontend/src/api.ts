@@ -312,7 +312,7 @@ export function listarIncidenciasReales(token: string, opciones: { misAtenciones
   )
 }
 
-export type UsuarioAuth = { id: string; email?: string; email_confirmed_at?: string | null }
+export type UsuarioAuth = { id: string; email?: string; email_confirmed_at?: string | null; last_sign_in_at?: string | null }
 
 /** Solo la identidad propia de Auth; nunca el directorio administrativo. */
 export async function consultarUsuarioAuth(token: string): Promise<UsuarioAuth> {

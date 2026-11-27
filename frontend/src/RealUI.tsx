@@ -9,6 +9,7 @@ export function Icon({ name }: { name: string }) {
     archive: "M4 9v11h16V9M3 4h18v5H3zM9 13h6",
     trash: "M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7",
     search: "m21 21-4.5-4.5M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0",
+    filter: "M3 4h18l-7 8v6l-4 2v-8z",
     plus: "M12 5v14M5 12h14",
     arrow: "m9 18 6-6-6-6",
     check: "m5 12 4 4L19 6",

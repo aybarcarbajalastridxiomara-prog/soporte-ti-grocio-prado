@@ -9,9 +9,9 @@ const fecha = (valor: string) => new Date(valor).toLocaleString("es-PE", {
 })
 const mensaje = (e: unknown) => e instanceof Error ? e.message : "No se pudo consultar el reporte."
 
-function Desglose({ titulo, grupos }: { titulo: string; grupos: GrupoReporte[] }) {
+function Desglose({ titulo, grupos, icono }: { titulo: string; grupos: GrupoReporte[]; icono: string }) {
   const maximo = grupos.reduce((max, grupo) => Math.max(max, grupo.total), 1)
-  return <section className="card report-breakdown"><h3>{titulo}</h3>{grupos.length ? <ul>{grupos.map(g =>
+  return <section className="card report-breakdown"><h3><Icon name={icono} />{titulo}</h3>{grupos.length ? <ul>{grupos.map(g =>
     <li key={g.id ?? g.nombre}><div><span>{g.nombre || "No disponible"}</span><b>{g.total}</b></div>
       <div className="report-bar" aria-hidden="true"><span style={{ width: `${g.total / maximo * 100}%` }} /></div></li>)}</ul>
     : <p className="help">Sin coincidencias para estos filtros.</p>}</section>
@@ -95,7 +95,7 @@ export default function RealReports({ token, abrirDetalle }: { token: string; ab
   const tarjetas = [
     { numero: reporte?.resumen.total, nombre: "Total de incidencias", icono: "clipboard", color: "blue" },
     { numero: reporte?.resumen.pendientes, nombre: "Pendientes", icono: "clock", color: "amber" },
-    { numero: reporte?.resumen.en_revision, nombre: "En revisión", icono: "tool", color: "blue" },
+    { numero: reporte?.resumen.en_revision, nombre: "En revisión", icono: "tool", color: "violet" },
     { numero: reporte?.resumen.cerradas, nombre: "Cerradas", icono: "check", color: "green" },
   ]
   const campo = (clave: keyof FiltrosReporte, valor: string) => setBorrador(f => ({ ...f, [clave]: valor }))
@@ -103,12 +103,11 @@ export default function RealReports({ token, abrirDetalle }: { token: string; ab
   const ultimo = primero && reporte ? primero + reporte.incidencias.length - 1 : 0
 
   return <div className="real-reports">
-    <div className="page-title-row"><div><h2>Reportes institucionales</h2><p>Consulta consolidada de incidencias municipales · Acceso exclusivo del JEFE</p></div>
+    <div className="page-title-row institutional-hero"><div className="institutional-heading"><Icon name="reports" /><div><h2>Reportes institucionales</h2><p>Consulta consolidada de incidencias municipales.</p></div></div></div>
+    <section className="card report-filter-card"><div className="section-head"><div className="institutional-heading"><Icon name="filter" /><div><h3>Filtros del reporte</h3><p>Las fechas corresponden a la hora de Lima. Los filtros se aplican a todo el reporte.</p></div></div>
       <div className="real-actions"><button className="outline" disabled={cargando || !!exportando} onClick={() => setRecarga(n => n + 1)}><Icon name="refresh" />Actualizar</button>
         <button className="outline" disabled={bloquear || !reporte?.exportacion.formatos.includes("pdf")} onClick={() => void exportar("pdf")}><Icon name="download" />{exportando === "pdf" ? "Generando PDF…" : "Exportar PDF"}</button>
         <button className="primary" disabled={bloquear || !reporte?.exportacion.formatos.includes("xlsx")} onClick={() => void exportar("xlsx")}><Icon name="download" />{exportando === "xlsx" ? "Generando Excel…" : "Exportar Excel"}</button></div></div>
-
-    <section className="card report-filter-card"><div className="section-head"><div><h3>Filtros del reporte</h3><p>Fechas de registro en America/Lima. Los filtros se combinan y se aplican a todos los resultados.</p></div></div>
       <form onSubmit={filtrar}><fieldset disabled={cargando || !!exportando} className="report-filters">
         <legend className="visually-hidden">Seleccionar filtros institucionales</legend>
         <label>Desde<input type="date" value={borrador.desde} max={borrador.hasta || undefined} onChange={e => campo("desde", e.target.value)} /></label>
@@ -130,7 +129,7 @@ export default function RealReports({ token, abrirDetalle }: { token: string; ab
     <div className="kpis four" aria-busy={cargando}>{tarjetas.map(t => <article className="kpi" key={t.nombre}><span className={`kpi-icon ${t.color}`}><Icon name={t.icono} /></span><div><b>{t.numero ?? "—"}</b><p>{t.nombre}</p></div></article>)}</div>
     {reporte && <><p className="report-scope">{reporte.organizacion} · Generado: {fecha(reporte.fecha_generacion)} (Lima). Estados vigentes de las incidencias registradas en el período.</p>
       <div className="report-applied" aria-label="Filtros aplicados">{Object.entries(reporte.filtros_aplicados).map(([k, v]) => <span key={k}><b>{k}:</b> {v}</span>)}</div>
-      <div className="report-breakdowns"><Desglose titulo="Por área municipal" grupos={reporte.desgloses.areas} /><Desglose titulo="Por prioridad oficial" grupos={reporte.desgloses.prioridades} /><Desglose titulo="Por responsable" grupos={reporte.desgloses.responsables} /></div></>}
+      <div className="report-breakdowns"><Desglose titulo="Por área municipal" grupos={reporte.desgloses.areas} icono="reports" /><Desglose titulo="Por prioridad oficial" grupos={reporte.desgloses.prioridades} icono="clipboard" /><Desglose titulo="Por responsable" grupos={reporte.desgloses.responsables} icono="user" /></div></>}
     <section className="card table-card" aria-busy={cargando}><div className="section-head"><div><h3>Incidencias del reporte</h3><p>{reporte ? `${reporte.resumen.total} coincidencias en PostgreSQL · Orden por fecha de registro` : cargando ? "Consultando datos autorizados…" : "Consulta no disponible"}</p></div></div>
       <div className="table-wrap" role="region" tabIndex={0} aria-label="Incidencias del reporte institucional"><table className="real-ticket-table"><thead><tr>{["Código", "Asunto", "Área", "Registro", "Prioridad", "Estado", "Responsable", "Acciones"].map(c => <th scope="col" key={c}>{c}</th>)}</tr></thead><tbody>{reporte?.incidencias.map(t => <tr key={t.id}>
         <td><b className="code">{t.codigo}</b></td><td title={t.asunto}>{t.asunto}</td><td>{t.area_nombre || "Área no disponible"}</td><td>{fecha(t.fecha_registro)}</td><td><Badge>{t.prioridad || "Pendiente de evaluación"}</Badge>{!t.prioridad && t.prioridad_revision_pendiente && <small className="cell-caption">Provisional: {t.prioridad_provisional} · revisión JEFE</small>}</td><td><Badge>{t.estado}</Badge></td><td>{t.responsable_nombre || "Sin responsable"}{t.responsable_tipo === "cierre" && <small className="cell-caption">Cerrado por</small>}</td><td><button className="row-action" aria-label={`Ver detalle de ${t.codigo}`} onClick={() => abrirDetalle(t)}>Ver<Icon name="arrow" /></button></td>

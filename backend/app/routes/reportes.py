@@ -7,7 +7,7 @@ from sqlalchemy import or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.auth import require_roles
+from app.auth import get_current_user, require_roles
 from app.db import get_db
 from app.exportaciones_reportes import formatos_disponibles, generar_excel, generar_pdf
 from app.models import Area, Asignacion, Incidencia, Usuario
@@ -63,7 +63,8 @@ def consultar(consulta: Annotated[ConsultaReporte, Query()], db: Session = Depen
 
 
 @router.get("/incidencias/exportar")
-def exportar(consulta: Annotated[ExportarReporte, Query()], db: Session = Depends(lectura_institucional)):
+def exportar(consulta: Annotated[ExportarReporte, Query()], db: Session = Depends(lectura_institucional),
+             jefe: Usuario = Depends(get_current_user)):
     if consulta.formato not in formatos_disponibles():
         raise HTTPException(503, "El formato solicitado no está disponible en este servidor.")
     filtros = filtros_solamente(consulta)
@@ -73,6 +74,7 @@ def exportar(consulta: Annotated[ExportarReporte, Query()], db: Session = Depend
     if datos["resumen"]["total"] > MAX_FILAS_EXPORTACION:
         raise HTTPException(422, f"El reporte supera {MAX_FILAS_EXPORTACION} incidencias. Reduce el período o aplica filtros; no se exportaron datos parciales.")
     datos["incidencias"] = filas_reporte(db, base, ciclo, limite=MAX_FILAS_EXPORTACION)
+    datos["emitido_por"] = jefe.nombre_completo
     try:
         archivo = generar_pdf(datos) if consulta.formato == "pdf" else generar_excel(datos)
     except Exception:
