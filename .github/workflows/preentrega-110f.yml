@@ -1,6 +1,8 @@
 name: 110F - Auditoria segura de preentrega
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches:
       - ajustes-docente-v4

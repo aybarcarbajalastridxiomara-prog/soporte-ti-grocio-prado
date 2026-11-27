@@ -1,6 +1,8 @@
 name: 111A - Dashboard real y administración segura
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [ajustes-docente-v4]
     paths: ["frontend/**", "backend/**", "database/**", ".github/scripts/probar_workflows_local.py", ".github/workflows/preentrega-111a.yml"]

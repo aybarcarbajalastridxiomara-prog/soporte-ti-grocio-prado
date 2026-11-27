@@ -2,6 +2,8 @@
 name: Probar ruta de reapertura V4
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches:
       - ajustes-docente-v4

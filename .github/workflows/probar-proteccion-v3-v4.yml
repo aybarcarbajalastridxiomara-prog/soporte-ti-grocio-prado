@@ -1,6 +1,8 @@
 name: Probar proteccion de rutas V3 ante reapertura V4
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches:
       - ajustes-docente-v4

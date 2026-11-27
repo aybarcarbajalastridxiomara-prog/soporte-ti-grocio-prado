@@ -1,6 +1,8 @@
 name: 110E - Pruebas integrales por perfiles
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches:
       - ajustes-docente-v4

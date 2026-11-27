@@ -1,6 +1,8 @@
 name: Probar intervenciones por ciclo V4
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches:
       - ajustes-docente-v4

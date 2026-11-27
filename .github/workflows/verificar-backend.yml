@@ -2,6 +2,8 @@
 name: Verificar backend
 
 on:
+  pull_request:
+    branches: [main]
   push:
     paths:
       - "backend/**"
