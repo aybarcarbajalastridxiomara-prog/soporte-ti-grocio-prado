@@ -103,13 +103,14 @@ test("rechaza archivo vacío, exceso de tamaño y rutas ajenas; conserva la canc
   })
 })
 
-test("pantalla inicial conserva cabeceras, etiquetas y contadores no disponibles sin datos inventados", () => {
+test("pantalla inicial muestra filtros fijos y cabeceras sin datos inventados ni exportación a Excel", () => {
   const html = renderToStaticMarkup(createElement(RealReports, { token, abrirDetalle: () => assert.fail("Solo render") }))
   assert.match(html, /Reportes institucionales/)
   for (const label of ["Desde", "Hasta", "Área municipal", "Estado", "Prioridad oficial", "Responsable actual o de cierre"]) assert(html.includes(label))
   assert.equal([...html.matchAll(/<th scope="col">/g)].length, 8)
   assert.match(html, /<tbody><\/tbody>/)
-  assert.equal([...html.matchAll(/<b>—<\/b>/g)].length, 4)
-  assert.match(html, /button class="outline" disabled="">.*Exportar PDF/)
+  assert.match(html, /<section class="card report-filter-card" aria-labelledby="report-filter-title">/)
+  assert.match(html, /button class="outline" type="button" disabled="">[^<]*(?:<svg[\s\S]*?<\/svg>)?Exportar PDF/)
+  assert.doesNotMatch(html, /Exportar Excel|Ocultar filtros|report-kpis|report-context/)
   assert.doesNotMatch(html, /INC-2026|Tesorería|Sistemas - Pruebas/)
 })

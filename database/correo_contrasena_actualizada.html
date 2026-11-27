@@ -14,10 +14,15 @@
           <span>Municipalidad Distrital de Grocio Prado</span>
         </td></tr>
         <tr><td style="padding:24px">
+          <p style="margin:0 0 12px;color:#48617d;font-size:13px;overflow-wrap:anywhere">Para: {{ .Email }}</p>
           <h1 style="margin:0 0 16px;font-size:25px;line-height:1.25">Contraseña actualizada</h1>
-          <p>Se cambió la contraseña de tu cuenta en el Sistema de Gestión de Incidencias de Soporte TI.</p>
-          <p style="background:#e4f5ec;color:#15583a;border-radius:8px;padding:14px"><strong>La contraseña se actualizó correctamente.</strong></p>
-          <p>Si reconoces esta actividad, no necesitas hacer nada más. Si no la reconoces, comunícate de inmediato con el área de Soporte TI de la municipalidad.</p>
+          <p>Hola{{ with .Data.nombre_completo }}, {{ . }}{{ end }}. La contraseña de tu cuenta en el Sistema de Gestión de Incidencias se modificó correctamente.</p>
+          <p style="background:#e4f5ec;color:#15583a;border-radius:8px;padding:14px"><strong>Estado:</strong> Cambio registrado.</p>
+          <p>Si tú realizaste el cambio, no necesitas hacer nada más.</p>
+          <div style="background:#eaf4ff;color:#173b65;border-radius:8px;padding:14px">
+            <strong>Aviso de seguridad</strong><br>
+            Si no reconoces esta actividad, comunícate de inmediato con Soporte TI de la Municipalidad Distrital de Grocio Prado.
+          </div>
         </td></tr>
         <tr><td style="padding:16px 24px;background:#e5f0fc;color:#314e70;font-size:14px;border-top:1px solid #d4e1f0;border-radius:0 0 12px 12px">
           Municipalidad Distrital de Grocio Prado<br>

@@ -18,7 +18,6 @@ function Desglose({ titulo, grupos, icono }: { titulo: string; grupos: GrupoRepo
 }
 
 export default function RealReports({ token, abrirDetalle }: { token: string; abrirDetalle: (t: IncidenciaReal) => void }) {
-  const [mostrarFiltros, setMostrarFiltros] = useState(false)
   const [borrador, setBorrador] = useState<FiltrosReporte>({ ...filtrosVacios })
   const [aplicados, setAplicados] = useState<FiltrosReporte>({ ...filtrosVacios })
   const [catalogos, setCatalogos] = useState<CatalogosReporte | null>(null)
@@ -28,11 +27,10 @@ export default function RealReports({ token, abrirDetalle }: { token: string; ab
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState("")
   const [errorCatalogos, setErrorCatalogos] = useState("")
-  const [exportando, setExportando] = useState<"pdf" | "xlsx" | null>(null)
+  const [exportando, setExportando] = useState(false)
   const [errorExportacion, setErrorExportacion] = useState("")
   const [estadoDescarga, setEstadoDescarga] = useState("")
   const [recarga, setRecarga] = useState(0)
-  const botonFiltros = useRef<HTMLButtonElement>(null)
   const descarga = useRef<AbortController | null>(null)
   const generacion = useRef(0)
   const pendiente = JSON.stringify(borrador) !== JSON.stringify(aplicados)
@@ -65,57 +63,49 @@ export default function RealReports({ token, abrirDetalle }: { token: string; ab
 
   function filtrar(evento: FormEvent) {
     evento.preventDefault()
-    setPagina(1); setAplicados({ ...borrador }); setMostrarFiltros(false)
-    botonFiltros.current?.focus()
+    setPagina(1); setAplicados({ ...borrador })
   }
 
   function limpiar() {
     setPagina(1); setBorrador({ ...filtrosVacios }); setAplicados({ ...filtrosVacios })
   }
 
-  async function exportar(formato: "pdf" | "xlsx") {
-    if (exportando || cargando || pendiente || !reporte?.exportacion.formatos.includes(formato)) return
+  async function exportarPdf() {
+    if (exportando || cargando || pendiente || !reporte?.exportacion.formatos.includes("pdf")) return
     const controller = new AbortController()
     descarga.current = controller
     const vigente = generacion.current
-    setExportando(formato); setErrorExportacion(""); setEstadoDescarga("")
+    setExportando(true); setErrorExportacion(""); setEstadoDescarga("")
     try {
-      const archivo = await descargarReporte(token, aplicados, formato, controller.signal)
+      const archivo = await descargarReporte(token, aplicados, "pdf", controller.signal)
       if (controller.signal.aborted || vigente !== generacion.current) return
       const url = URL.createObjectURL(archivo)
       const enlace = document.createElement("a")
-      enlace.href = url; enlace.download = `grocio-prado-incidencias.${formato}`
+      enlace.href = url; enlace.download = "grocio-prado-incidencias.pdf"
       document.body.appendChild(enlace); enlace.click(); enlace.remove()
       // Dar tiempo al navegador para iniciar la descarga antes de liberar el buffer.
       window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-      setEstadoDescarga(`Archivo ${formato.toUpperCase()} generado. La descarga abarca todas las coincidencias y tiene su propia fecha de generación.`)
+      setEstadoDescarga("PDF generado con todas las coincidencias.")
     } catch (e) { if (!controller.signal.aborted && vigente === generacion.current) setErrorExportacion(mensaje(e)) }
-    finally { if (vigente === generacion.current) { setExportando(null); descarga.current = null } }
+    finally { if (vigente === generacion.current) { setExportando(false); descarga.current = null } }
   }
 
   const excesivo = !!reporte && reporte.resumen.total > reporte.exportacion.maximo_filas
   const bloquear = cargando || !reporte || pendiente || !!exportando || excesivo
-  const tarjetas = [
-    { numero: reporte?.resumen.total, nombre: "Total de incidencias", icono: "clipboard", color: "blue" },
-    { numero: reporte?.resumen.pendientes, nombre: "Pendientes", icono: "clock", color: "amber" },
-    { numero: reporte?.resumen.en_revision, nombre: "En revisión", icono: "tool", color: "violet" },
-    { numero: reporte?.resumen.cerradas, nombre: "Cerradas", icono: "check", color: "green" },
-  ]
   const campo = (clave: keyof FiltrosReporte, valor: string) => setBorrador(f => ({ ...f, [clave]: valor }))
   const primero = reporte?.incidencias.length ? (reporte.pagina - 1) * reporte.tamano_pagina + 1 : 0
   const ultimo = primero && reporte ? primero + reporte.incidencias.length - 1 : 0
 
   return <div className="real-reports">
     <BannerInstitucional icono="reports" titulo="Reportes institucionales" descripcion="Consulta y exporta el consolidado de incidencias municipales." />
-    <div className="report-toolbar">
-      <button ref={botonFiltros} className="outline" type="button" aria-expanded={mostrarFiltros} aria-controls="filtros-del-reporte" onClick={() => setMostrarFiltros(visible => !visible)}>
-        <Icon name="filter" />{mostrarFiltros ? "Ocultar filtros" : pendiente ? "Filtros sin aplicar" : "Filtros"}
-      </button>
-      <div className="real-actions"><button className="outline" disabled={cargando || !!exportando} onClick={() => setRecarga(n => n + 1)}><Icon name="refresh" />Actualizar</button>
-        <button className="outline" disabled={bloquear || !reporte?.exportacion.formatos.includes("pdf")} onClick={() => void exportar("pdf")}><Icon name="download" />{exportando === "pdf" ? "Generando PDF…" : "Exportar PDF"}</button>
-        <button className="primary" disabled={bloquear || !reporte?.exportacion.formatos.includes("xlsx")} onClick={() => void exportar("xlsx")}><Icon name="download" />{exportando === "xlsx" ? "Generando Excel…" : "Exportar Excel"}</button></div>
-    </div>
-    <section id="filtros-del-reporte" className="card report-filter-card" aria-label="Filtros del reporte" hidden={!mostrarFiltros}>
+    <section className="card report-filter-card" aria-labelledby="report-filter-title">
+      <div className="section-head">
+        <h3 id="report-filter-title"><Icon name="filter" />Filtros del reporte</h3>
+        <div className="real-actions">
+          <button className="outline" type="button" disabled={cargando || exportando} onClick={() => setRecarga(n => n + 1)}><Icon name="refresh" />Actualizar</button>
+          <button className="outline" type="button" disabled={bloquear || !reporte?.exportacion.formatos.includes("pdf")} onClick={() => void exportarPdf()}><Icon name="download" />{exportando ? "Generando PDF…" : "Exportar PDF"}</button>
+        </div>
+      </div>
       <form onSubmit={filtrar}><fieldset disabled={cargando || !!exportando} className="report-filters">
         <legend className="visually-hidden">Seleccionar filtros institucionales</legend>
         <label><span><Icon name="clock" />Desde</span><input type="date" value={borrador.desde} max={borrador.hasta || undefined} onChange={e => campo("desde", e.target.value)} /></label>
@@ -132,12 +122,8 @@ export default function RealReports({ token, abrirDetalle }: { token: string; ab
     {errorExportacion && <div className="auth-error" role="alert">{errorExportacion}</div>}
     {estadoDescarga && <p className="notice" role="status">{estadoDescarga}</p>}
     {excesivo && <p className="notice">La consulta tiene {reporte.resumen.total} coincidencias. Para exportar, reduce el período o filtra hasta {reporte.exportacion.maximo_filas} incidencias. La tabla y los totales siguen incluyendo todo el conjunto.</p>}
-    {reporte && reporte.exportacion.formatos.length < 2 && <p className="notice">Algún formato no está disponible en el servidor. Las descargas solo se habilitan cuando sus dependencias están disponibles.</p>}
-
-    <div className="kpis four report-kpis" aria-busy={cargando}>{tarjetas.map(t => <article className={`kpi report-kpi-${t.color}`} key={t.nombre}><span className={`kpi-icon ${t.color}`}><Icon name={t.icono} /></span><div><b>{t.numero ?? "—"}</b><p>{t.nombre}</p></div></article>)}</div>
-    {reporte && <><div className="report-context"><p className="report-scope"><Icon name="clock" />Generado el {fecha(reporte.fecha_generacion)} (hora de Lima)</p>
-      <div className="report-applied" aria-label="Filtros aplicados">{Object.entries(reporte.filtros_aplicados).map(([k, v]) => <span key={k}><b>{k}:</b> {v}</span>)}</div></div>
-      <div className="report-breakdowns"><Desglose titulo="Por área municipal" grupos={reporte.desgloses.areas} icono="reports" /><Desglose titulo="Por prioridad oficial" grupos={reporte.desgloses.prioridades} icono="clipboard" /><Desglose titulo="Por responsable" grupos={reporte.desgloses.responsables} icono="user" /></div></>}
+    {reporte && !reporte.exportacion.formatos.includes("pdf") && <p className="notice">La exportación a PDF no está disponible en este momento.</p>}
+    {reporte && <div className="report-breakdowns"><Desglose titulo="Por área municipal" grupos={reporte.desgloses.areas} icono="reports" /><Desglose titulo="Por prioridad oficial" grupos={reporte.desgloses.prioridades} icono="clipboard" /><Desglose titulo="Por responsable" grupos={reporte.desgloses.responsables} icono="user" /></div>}
     <section className="card table-card report-results" aria-busy={cargando}><div className="section-head"><div><h3><Icon name="clipboard" />Incidencias del reporte {reporte && <span className="incident-count">{reporte.resumen.total} {reporte.resumen.total === 1 ? "coincidencia" : "coincidencias"}</span>}</h3><p>{reporte ? "Ordenadas por fecha de registro" : cargando ? "Consultando datos autorizados…" : "Consulta no disponible"}</p></div></div>
       <div className="table-wrap" role="region" tabIndex={0} aria-label="Incidencias del reporte institucional"><table className="real-ticket-table"><thead><tr>{["Código", "Asunto", "Área", "Registro", "Prioridad", "Estado", "Responsable", "Acciones"].map(c => <th scope="col" key={c}>{c}</th>)}</tr></thead><tbody>{reporte?.incidencias.map(t => <tr key={t.id}>
         <td><b className="code">{t.codigo}</b></td><td title={t.asunto}>{t.asunto}</td><td>{t.area_nombre || "Área no disponible"}</td><td>{fecha(t.fecha_registro)}</td><td><Badge>{t.prioridad || "Pendiente de evaluación"}</Badge>{!t.prioridad && t.prioridad_revision_pendiente && <small className="cell-caption">Provisional: {t.prioridad_provisional} · revisión JEFE</small>}</td><td><Badge>{t.estado}</Badge></td><td>{t.responsable_nombre || "Sin responsable"}{t.responsable_tipo === "cierre" && <small className="cell-caption">Cerrado por</small>}</td><td><VerIncidencia codigo={t.codigo} abrir={() => abrirDetalle(t)} /></td>

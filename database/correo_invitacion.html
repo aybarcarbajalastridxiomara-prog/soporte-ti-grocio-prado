@@ -14,11 +14,24 @@
           <span>Municipalidad Distrital de Grocio Prado</span>
         </td></tr>
         <tr><td style="padding:24px">
-          <h1 style="margin:0 0 16px;font-size:25px;line-height:1.25">Activa tu cuenta de Soporte TI</h1>
-          <p>El Jefe de Sistemas te ha invitado al Sistema de Gestión de Incidencias de la Municipalidad Distrital de Grocio Prado.</p>
-          <p>Abre el enlace para crear tu contraseña y activar tu cuenta.</p>
+          <p style="margin:0 0 12px;color:#48617d;font-size:13px;overflow-wrap:anywhere">Para: {{ .Email }}</p>
+          <h1 style="margin:0 0 16px;font-size:25px;line-height:1.25">Te damos la bienvenida{{ with .Data.nombre_completo }}, {{ . }}{{ end }}</h1>
+          <p>Tu cuenta en el Sistema de Gestión de Incidencias de la Municipalidad Distrital de Grocio Prado fue registrada. Para comenzar, activa tu cuenta y define tu contraseña personal.</p>
+          {{ if or .Data.usuario .Data.nombre_area .Data.rol_perfil }}
+          <div style="padding:12px 16px;border:1px solid #d4e1f0;border-radius:8px;background:#f4f8fd;overflow-wrap:anywhere">
+            {{ with .Data.usuario }}<div><strong>Usuario:</strong> {{ . }}</div>{{ end }}
+            {{ with .Data.nombre_area }}<div><strong>Área:</strong> {{ . }}</div>{{ end }}
+            {{ if eq (printf "%v" .Data.rol_perfil) "REPRESENTANTE" }}
+            <div><strong>Rol:</strong> Representante municipal</div><div><strong>Funciones:</strong> Registrar y dar seguimiento a las incidencias de tu área.</div>
+            {{ else if eq (printf "%v" .Data.rol_perfil) "ASISTENTE" }}
+            <div><strong>Rol:</strong> Asistente de Soporte TI</div><div><strong>Funciones:</strong> Atender y documentar las incidencias asignadas.</div>
+            {{ else if eq (printf "%v" .Data.rol_perfil) "PRACTICANTE" }}
+            <div><strong>Rol:</strong> Practicante de Soporte TI</div><div><strong>Funciones:</strong> Apoyar la atención y documentar las incidencias asignadas.</div>
+            {{ end }}
+          </div>
+          {{ end }}
           <p style="margin:28px 0;text-align:center"><a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#095cae;color:#fff;text-decoration:none;font-weight:bold;padding:14px 24px;border-radius:8px">Activar mi cuenta</a></p>
-          <p style="background:#eaf4ff;color:#173b65;border-radius:8px;padding:14px">El enlace es personal. Si no esperabas esta invitación, puedes ignorar el mensaje.</p>
+          <p style="background:#eaf4ff;color:#173b65;border-radius:8px;padding:14px">El enlace es personal y tiene vencimiento. Si no esperabas esta invitación, puedes ignorar el mensaje.</p>
         </td></tr>
         <tr><td style="padding:16px 24px;background:#e5f0fc;color:#314e70;font-size:14px;border-top:1px solid #d4e1f0;border-radius:0 0 12px 12px">
           Municipalidad Distrital de Grocio Prado<br>

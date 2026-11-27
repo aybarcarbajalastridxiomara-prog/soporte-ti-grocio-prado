@@ -42,6 +42,17 @@ class AltaAuthSegura(unittest.TestCase):
             self.assertEqual(call.call_count, 2)
             self.assertNotIn("method", call.call_args.kwargs)
 
+    def test_datos_de_bienvenida_se_guardan_aparte_del_marcador_admin(self):
+        datos = {"nombre_completo": "Astrid", "usuario": "astrid.prueba", "nombre_area": "Tesorería",
+                 "rol_perfil": "REPRESENTANTE"}
+        with patch("app.supabase_admin.peticion_privada", return_value=(201, json.dumps(self.cuenta).encode())) as call:
+            self.assertEqual(identidad_pendiente("prueba@example.invalid", self.solicitud, "hash-ficticio",
+                                                datos_correo=datos), self.identidad)
+            body = json.loads(call.call_args.kwargs["data"])
+            self.assertEqual(body["user_metadata"], datos)
+            self.assertEqual(body["app_metadata"], self.cuenta["app_metadata"])
+            self.assertFalse(body["email_confirm"])
+
     def test_no_adopta_identidad_antigua_confirmada_o_de_otra_solicitud(self):
         for cambios in ({"app_metadata": {}}, {"email_confirmed_at": "2026-11-27"},
                         {"app_metadata": {"alta_municipal": {"solicitud": str(uuid4()), "huella": "hash-ficticio"}}}):

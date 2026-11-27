@@ -88,7 +88,7 @@ def retorno_auth_verificado(settings=None) -> str:
     return settings.frontend_url.rstrip("/") + "/"
 
 
-def identidad_pendiente(correo: str, solicitud: UUID, huella: str) -> UUID:
+def identidad_pendiente(correo: str, solicitud: UUID, huella: str, *, datos_correo: dict[str, str] | None = None) -> UUID:
     """Crea sin contraseña, confirmación ni correo. Reintenta solo SU propia operación.
 
     El marcador está en app_metadata (solo Admin), no en user_metadata editable.
@@ -98,9 +98,11 @@ def identidad_pendiente(correo: str, solicitud: UUID, huella: str) -> UUID:
     origen = origen_supabase(settings.supabase_url)
     headers = {**cabeceras_supabase(settings.supabase_service_role_key), "Content-Type": "application/json"}
     marca = {"solicitud": str(solicitud), "huella": huella}
+    datos_alta = {"email": correo, "email_confirm": False, "app_metadata": {"alta_municipal": marca}}
+    if datos_correo:
+        datos_alta["user_metadata"] = datos_correo
     code, body = peticion_privada(f"{origen}/auth/v1/admin/users", method="POST", headers=headers,
-        data=json.dumps({"email": correo, "email_confirm": False,
-                         "app_metadata": {"alta_municipal": marca}}).encode())
+        data=json.dumps(datos_alta).encode())
 
     def comprobar(datos):
         try:

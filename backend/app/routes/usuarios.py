@@ -485,7 +485,13 @@ def invitar_usuario(
         if datos.rol in {"ASISTENTE", "PRACTICANTE"} and area.nombre != AREA_INFORMATICA:
             raise HTTPException(409, "El área cambió. No se creó ninguna identidad.")
         validar_cupo_antes_de_invitar(db, datos)
-    identidad = identidad_pendiente(datos.correo, datos.solicitud_id, huella)
+    datos_correo = {
+        "nombre_completo": datos.nombre_completo,
+        "usuario": datos.usuario,
+        "nombre_area": area.nombre,
+        "rol_perfil": datos.rol,
+    }
+    identidad = identidad_pendiente(datos.correo, datos.solicitud_id, huella, datos_correo=datos_correo)
     if db.get(Usuario, identidad) is not None:
         raise HTTPException(409, "La cuenta ya tiene un perfil. Usa la edición de usuarios; no se han cambiado sus permisos.")
     try:
