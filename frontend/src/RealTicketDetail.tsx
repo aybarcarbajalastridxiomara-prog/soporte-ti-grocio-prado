@@ -14,6 +14,7 @@ import RealPriority from "./RealPriority"
 import RealTechnicalReport from "./RealTechnicalReport"
 import RealAttachments from "./RealAttachments"
 import { descripcionPrioridad } from "./tiOperations"
+import { Badge, Icon } from "./RealUI"
 
 type Props = {
   token: string
@@ -68,26 +69,19 @@ const panel: CSSProperties = {
 }
 const etiquetas: CSSProperties = { fontSize: 12, color: "#64748b", margin: "0 0 5px" }
 const valores: CSSProperties = { margin: 0, fontWeight: 600, color: "#182b46", overflowWrap: "anywhere" }
-const boton: CSSProperties = {
-  borderRadius: 9,
-  border: "1px solid #d3deea",
-  padding: "9px 14px",
-  background: "white",
-  cursor: "pointer",
-  font: "inherit",
-}
 
 function fecha(valor: string | null | undefined) {
   if (!valor) return "No registrada"
   const f = new Date(valor)
-  return Number.isNaN(f.getTime()) ? "Fecha no disponible" : f.toLocaleString("es-PE")
+  return Number.isNaN(f.getTime()) ? "Fecha no disponible" : f.toLocaleString("es-PE", { timeZone: "America/Lima" })
 }
 
-function Campo({ nombre, valor }: { nombre: string; valor: string | null | undefined }) {
+function Campo({ nombre, valor, icono }: { nombre: string; valor: string | null | undefined; icono?: string }) {
   return (
-    <div style={{ minWidth: 0 }}>
-      <p style={etiquetas}>{nombre}</p>
-      <p style={valores}>{valor?.trim() || "No especificado"}</p>
+    <div className="incident-detail-field">
+      {icono && <Icon name={icono} />}
+      <div><p style={etiquetas}>{nombre}</p>
+      <p style={valores}>{valor?.trim() || "No especificado"}</p></div>
     </div>
   )
 }
@@ -139,48 +133,30 @@ export default function RealTicketDetail({ token, ticket, rol, onVolver }: Props
     return () => { vigente = false }
   }, [token, ticket.id, recarga])
 
-  const tabs: { id: Seccion; nombre: string; cantidad?: number }[] = [
-    { id: "resumen", nombre: "Resumen" },
-    { id: "atenciones", nombre: "Atenciones", cantidad: intervenciones.length },
-    { id: "historial", nombre: "Historial", cantidad: eventos.length },
-    ...(rol && ["JEFE", "ASISTENTE", "PRACTICANTE"].includes(rol) ? [{ id: "informe" as const, nombre: "Informe técnico" }] : []),
+  const tabs: { id: Seccion; nombre: string; icono: string; cantidad?: number }[] = [
+    { id: "resumen", nombre: "Resumen", icono: "clipboard" },
+    { id: "atenciones", nombre: "Atenciones", icono: "login-headset", cantidad: intervenciones.length },
+    { id: "historial", nombre: "Historial", icono: "clock", cantidad: eventos.length },
+    ...(rol && ["JEFE", "ASISTENTE", "PRACTICANTE"].includes(rol) ? [{ id: "informe" as const, nombre: "Informe técnico", icono: "reports" }] : []),
   ]
 
   return (
-    <div className="real-detail" style={{ display: "grid", gap: 18 }}>
-      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-        <button type="button" onClick={onVolver} style={boton}>← Volver al listado</button>
-        <button
-          type="button"
-          disabled={cargando}
-          onClick={() => setRecarga((x) => x + 1)}
-          style={{ ...boton, opacity: cargando ? .6 : 1 }}
-        >
-          {cargando ? "Actualizando..." : "Actualizar detalle"}
-        </button>
-      </div>
-
-      <header style={{ ...panel, display: "grid", gap: 12 }}>
-        <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 12 }}>
-          <div>
-            <p style={{ ...etiquetas, fontWeight: 700, letterSpacing: ".08em" }}>{ticket.codigo}</p>
-            <h2 style={{ margin: 0, fontSize: "clamp(18px, 3vw, 26px)", color: "#142c4a" }}>
-              {detalle?.asunto || ticket.asunto}
-            </h2>
-          </div>
-          <span style={{
-            alignSelf: "start", padding: "8px 12px", borderRadius: 999,
-            background: ticket.estado === "Cerrado" ? "#e7f7ed" : ticket.estado === "Pendiente" ? "#fff5db" : "#e6f0ff",
-            color: ticket.estado === "Cerrado" ? "#177044" : ticket.estado === "Pendiente" ? "#8c5d14" : "#2057a5",
-            fontWeight: 700, fontSize: 13,
-          }}>
-            {detalle?.estado || ticket.estado}
-          </span>
+    <div className="real-detail incident-detail">
+      <header className="card incident-detail-header">
+        <div className="incident-detail-nav"><button type="button" className="text-button" onClick={onVolver}>‹ Volver al listado</button>
+          <button type="button" className="outline" disabled={cargando} onClick={() => setRecarga(x => x + 1)}><Icon name="refresh" />{cargando ? "Actualizando…" : "Actualizar detalle"}</button></div>
+        <div className="incident-detail-title">
+          <span className="incident-detail-icon"><Icon name="clipboard" /></span>
+          <div><span className="incident-count">{ticket.codigo}</span><h2>{detalle?.asunto || ticket.asunto}</h2><p>Consulta de la incidencia y sus actuaciones.</p></div>
+          <Badge>{detalle?.estado || ticket.estado}</Badge>
         </div>
-        <p style={{ color: "#65758b", fontSize: 13, margin: 0 }}>
-          Consulta de la incidencia y sus actuaciones. Las acciones disponibles corresponden a tus permisos y al ciclo vigente.
-        </p>
       </header>
+      <div className="card incident-detail-metadata">
+        <Campo icono="users" nombre="Área municipal" valor={detalle?.area_nombre || ticket.area_nombre} />
+        <Campo icono="login-monitor" nombre="Categoría" valor={detalle?.categoria} />
+        <Campo icono="reports" nombre="Prioridad" valor={detalle?.prioridad || ticket.prioridad} />
+        <Campo icono="clock" nombre="Registrada" valor={fecha(detalle?.fecha_registro || ticket.fecha_registro)} />
+      </div>
 
       {mensajeAsignacion && (
         <p role="status" style={{ ...panel, color: "#176a46", fontWeight: 700 }}>
@@ -227,22 +203,15 @@ export default function RealTicketDetail({ token, ticket, rol, onVolver }: Props
    
 
 
-      <nav aria-label="Secciones del detalle" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <nav aria-label="Secciones del detalle" className="incident-detail-tabs">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
             onClick={() => setSeccion(tab.id)}
             aria-pressed={seccion === tab.id}
-            style={{
-              ...boton,
-              borderColor: seccion === tab.id ? "#285da8" : "#d3deea",
-              background: seccion === tab.id ? "#eaf2fd" : "#fff",
-              color: seccion === tab.id ? "#1b4c92" : "#34445a",
-              fontWeight: seccion === tab.id ? 700 : 500,
-            }}
           >
-            {tab.nombre}{tab.cantidad !== undefined ? ` (${tab.cantidad})` : ""}
+            <Icon name={tab.icono} />{tab.nombre}{tab.cantidad !== undefined ? ` (${tab.cantidad})` : ""}
           </button>
         ))}
       </nav>
@@ -256,16 +225,16 @@ export default function RealTicketDetail({ token, ticket, rol, onVolver }: Props
       {!cargando && detalle && seccion === "informe" && rol && ["JEFE", "ASISTENTE", "PRACTICANTE"].includes(rol) && <RealTechnicalReport token={token} ticketId={ticket.id} />}
 
       {!cargando && detalle && seccion === "resumen" && (
-        <section style={{ ...panel, display: "grid", gap: 22 }}>
-          <h3 style={{ margin: 0, color: "#182b46" }}>Información de la incidencia</h3>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 20 }}>
+        <section className="card incident-detail-overview">
+          <h3><Icon name="clipboard" />Información de la incidencia</h3>
+          <div className="incident-detail-fields">
             <Campo nombre="Código" valor={detalle.codigo} />
             <Campo nombre="Categoría" valor={detalle.categoria} />
             <Campo nombre="Prioridad" valor={detalle.prioridad} />
             <Campo nombre="Equipo o sistema" valor={detalle.equipo_sistema_afectado} />
             <Campo nombre="Ubicación" valor={detalle.ubicacion} />
             <Campo nombre="Impacto" valor={detalle.impacto} />
-            <Campo nombre="Área municipal" valor={ticket.area_nombre} />
+            <Campo nombre="Área municipal" valor={detalle.area_nombre || ticket.area_nombre} />
             <Campo nombre="Inicio del problema" valor={detalle.fecha_inicio_problema} />
             <Campo nombre="Hora aproximada" valor={detalle.hora_inicio_problema} />
             <Campo nombre="Fecha de registro" valor={fecha(detalle.fecha_registro)} />
@@ -273,7 +242,7 @@ export default function RealTicketDetail({ token, ticket, rol, onVolver }: Props
           </div>
           <div>
             <p style={etiquetas}>Descripción del problema</p>
-            <p style={{ ...valores, whiteSpace: "pre-wrap", fontWeight: 400 }}>{detalle.descripcion}</p>
+            <p className="incident-detail-description">{detalle.descripcion}</p>
             {detalle.incidencia_anterior_id && <div className="notice"><b>Antecedente vinculado</b><p>Referencia: {detalle.incidencia_anterior_id}</p><p>{detalle.detalle_reincidencia || "Sin observaciones adicionales."}</p></div>}
           </div>
         </section>

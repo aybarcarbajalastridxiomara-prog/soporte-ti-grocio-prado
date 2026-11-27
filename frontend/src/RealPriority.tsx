@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react"
 import type { Rol } from "./api"
+import { Icon } from "./RealUI"
 import { consultarPrioridad, establecerPrioridad, type ContextoPrioridad, type Prioridad } from "./tiOperations"
 
 const escritura = import.meta.env.VITE_PERMITIR_ASIGNACION_REAL === "true"
@@ -37,7 +38,7 @@ export default function RealPriority({ token, ticketId, rol, onActualizada }: {t
     finally { setOcupado(false) }
   }
   return <section className="card real-form real-operation" aria-label="Evaluación de prioridad">
-    <h3>Prioridad de la incidencia</h3>
+    <h3><Icon name="login-ticket" />Prioridad de la incidencia</h3>
     {error && <p role="alert" className="auth-error">{error}</p>}
     {!contexto && !error && <p role="status">Consultando evaluación…</p>}
     {contexto && <>

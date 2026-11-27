@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react"
 import { solicitarAPI } from "./api"
 
+import { Icon } from "./RealUI"
+
 type Tecnico = { id: string; nombre_completo: string; usuario: string; rol: "ASISTENTE" | "PRACTICANTE" }
 type ContextoAsignacion = {
   incidencia_id: string; codigo: string; estado: string; esquema_v4: boolean; ciclo_actual: number
@@ -51,7 +53,7 @@ export default function RealAssignment({ token, ticketId, onAsignada, selectorIn
     finally { setGuardando(false) }
   }
   return <section className="card real-assignment real-form" aria-label="Asignación de técnico">
-    <div className="section-head"><div><h3>Asignar incidencia</h3><p>Acción exclusiva de Jefatura; se conserva el historial de responsables.</p></div>{contexto && <span className="badge blue">Ciclo {contexto.ciclo_actual}</span>}</div>
+    <div className="section-head"><div className="institutional-heading"><Icon name="user-add" /><div><h3>{selectorIncidencia ? "Nueva asignación" : "Asignar incidencia"}</h3><p>{selectorIncidencia ? "Selecciona la incidencia y el responsable técnico." : "Se conserva el historial de responsables."}</p></div></div>{contexto && <span className="badge blue">Ciclo {contexto.ciclo_actual}</span>}</div>
     {cargando && <p role="status">Consultando técnicos y responsable…</p>}
     {error && <p role="alert" className="field-error">{error}</p>}{mensaje && <p role="status" className="success">{mensaje}</p>}
     {contexto?.tecnico_activo && <div className="notice"><b>Responsable actual: {contexto.tecnico_activo.nombre_completo}</b><p>Ya existe una asignación activa. No se permiten duplicados.</p></div>}
@@ -60,7 +62,7 @@ export default function RealAssignment({ token, ticketId, onAsignada, selectorIn
       <div className={selectorIncidencia ? "form-row" : ""}>{selectorIncidencia && <fieldset className="assignment-selection" disabled={guardando}>{selectorIncidencia}</fieldset>}<label>Responsable autorizado<select value={seleccion} onChange={e => setSeleccion(e.target.value)} required disabled={guardando || cargando || !escrituraHabilitada || !disponible}><option value="">{ticketId ? "Seleccione asistente o practicante" : "Seleccione primero una incidencia"}</option>{tecnicos.map(t => <option key={t.id} value={t.id}>{t.nombre_completo} · {t.rol}</option>)}</select></label></div>
       {!cargando && ticketId && disponible && !tecnicos.length && <p role="status" className="help">No hay asistentes ni practicantes habilitados.</p>}
       {!escrituraHabilitada && <p className="notice observation-notice">Registro de asignaciones deshabilitado en este entorno hasta autorizar pruebas.</p>}
-      <div className="real-actions"><button type="submit" className="primary" disabled={!escrituraHabilitada || !disponible || cargando || guardando || !seleccion}>{guardando ? "Registrando…" : "Guardar asignación"}</button><button type="button" className="outline" disabled={!ticketId || guardando || cargando} onClick={() => { setError(""); setMensaje(""); setRecarga(n => n + 1) }}>Actualizar disponibilidad</button></div>
+      <div className="real-actions"><button type="submit" className="primary" disabled={!escrituraHabilitada || !disponible || cargando || guardando || !seleccion}><Icon name="check" />{guardando ? "Registrando…" : "Asignar incidencia"}</button><button type="button" className="outline" disabled={!ticketId || guardando || cargando} onClick={() => { setError(""); setMensaje(""); setRecarga(n => n + 1) }}><Icon name="refresh" />Actualizar disponibilidad</button></div>
     </form>
   </section>
 }

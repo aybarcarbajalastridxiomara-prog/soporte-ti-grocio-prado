@@ -59,6 +59,31 @@ class IncidenciaResumen(BaseModel):
     fecha_asignacion: datetime | None = None
     duracion_atencion_minutos: int | None = None
 
+
+class AvisoAsignacion(BaseModel):
+    id: UUID
+    fecha_asignacion: datetime
+    incidencia: IncidenciaResumen
+
+
+@router.get("/avisos/asignaciones", response_model=list[AvisoAsignacion])
+def avisos_asignaciones(
+    usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    if usuario.rol not in ("ASISTENTE", "PRACTICANTE"):
+        raise HTTPException(403, "Solo el personal técnico puede consultar estos avisos.")
+    filas = db.execute(
+        select(Asignacion.id, Asignacion.fecha_asignacion, Incidencia)
+        .join(Incidencia, Incidencia.id == Asignacion.incidencia_id)
+        .where(Asignacion.tecnico_id == usuario.id,
+               Asignacion.origen_asignacion == "JEFATURA",
+               Asignacion.fecha_fin.is_(None), Incidencia.estado != "Cerrado", condicion_ciclo(db))
+        .order_by(Asignacion.fecha_asignacion.desc(), Asignacion.id.desc())
+        .limit(20)
+    )
+    return [AvisoAsignacion(id=id_aviso, fecha_asignacion=fecha, incidencia=IncidenciaResumen.model_validate(incidencia))
+            for id_aviso, fecha, incidencia in filas]
+
 class IncidenciaDetalle(BaseModel):
     """Informacion completa de una incidencia."""
 

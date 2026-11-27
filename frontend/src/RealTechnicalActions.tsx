@@ -1,6 +1,7 @@
 /** Paso 110D3 - Intervencion y cierre con rutas V3/V4 segun ciclo real. */
 import { useEffect, useState, type CSSProperties, type FormEvent } from "react"
 import { solicitarAPI } from "./api"
+import { Icon } from "./RealUI"
 
 type Contexto = {
   incidencia_id: string
@@ -137,8 +138,8 @@ export default function RealTechnicalActions({ token, ticketId, onActualizada }:
 
   return (
     <section className="form-workflow" style={panel} aria-label="Atención técnica y cierre">
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <h3 style={{ margin: 0, color: "#193859" }}>Atención técnica y cierre</h3>
+      <div className="incident-detail-work-title">
+        <h3><Icon name="sidebar-wrench" />Atención técnica y cierre</h3>
         {contexto && <strong style={{ fontSize: 12, color: "#235da0" }}>
           Ciclo {contexto.ciclo_actual} · {contexto.ciclo_actual > 1 ? "V4" : "V3"}
         </strong>}

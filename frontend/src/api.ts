@@ -278,6 +278,18 @@ export function subirAdjuntoReal(token: string, incidencia: string, archivo: Fil
     {method:"POST",headers:{"Content-Type":archivo.type || "application/octet-stream"},body:archivo,redirect:"error"})
 }
 
+export type ConfiguracionAdjuntos = { carga_habilitada: boolean; maximo_bytes: number; tipos: string[]; motivo: string }
+
+export function consultarAdjuntosRegistro(token: string, signal: AbortSignal) {
+  return solicitarAPI<ConfiguracionAdjuntos>("/api/incidencias/adjuntos/configuracion-registro", token, { signal })
+}
+
+export type AvisoAsignacion = { id: string; fecha_asignacion: string; incidencia: IncidenciaReal }
+
+export function consultarAvisosAsignacion(token: string, signal: AbortSignal) {
+  return solicitarAPI<AvisoAsignacion[]>("/api/incidencias/avisos/asignaciones", token, { signal })
+}
+
 export async function descargarAdjuntoReal(token: string, incidencia: string, adjunto: string) {
   const respuesta = await solicitarRespuesta(`/api/incidencias/${encodeURIComponent(incidencia)}/adjuntos/${encodeURIComponent(adjunto)}/descargar`,token,{redirect:"error"})
   const tipo=respuesta.headers.get("Content-Type")?.split(";")[0]

@@ -102,6 +102,24 @@ class Conciliacion112B(unittest.TestCase):
         self.assertEqual(fila["responsable_tipo"], "cierre")
         self.assertEqual(fila["responsable_nombre"], "ASISTENTE")
 
+    def test_avisos_solo_muestran_asignaciones_activas_de_jefatura_al_destinatario(self):
+        propia = self.crear_asignada(rol="ASISTENTE")
+        auto = self.crear_asignada(rol="ASISTENTE")
+        otra = self.crear_asignada(rol="PRACTICANTE")
+        with Session(self.engine) as db:
+            asignacion = db.scalar(select(Asignacion).where(Asignacion.incidencia_id == auto))
+            asignacion.asignado_por_id = self.ids["ASISTENTE"]
+            asignacion.origen_asignacion = "AUTOTOMA"
+            db.commit()
+        ruta = "/api/incidencias/avisos/asignaciones"
+        for rol, destino in (("ASISTENTE", propia), ("PRACTICANTE", otra)):
+            self.actor = rol
+            respuesta = self.client.get(ruta)
+            self.assertEqual(respuesta.status_code, 200, respuesta.text)
+            self.assertEqual([a["incidencia"]["id"] for a in respuesta.json()], [str(destino)])
+        self.actor = "REPRESENTANTE"
+        self.assertEqual(self.client.get(ruta).status_code, 403)
+
     def test_inactivo_no_accede_y_configuracion_no_asume_permisos(self):
         self.permisos_patch.stop()  # Esta prueba verifica el detector real, no el doble de edición.
         self.actor = "PRACTICANTE"

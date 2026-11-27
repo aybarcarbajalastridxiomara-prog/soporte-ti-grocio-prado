@@ -3,6 +3,7 @@ import {
   iniciarSesionReal, consultarPerfilReal, listarIncidenciasReales, consultarResumenReal, sesionReal,
   recibirEnlaceAuthReal, establecerClaveInvitada, consultarUsuarioAuth,
   solicitarRecuperacionReal, completarRecuperacionReal, recuperacionHabilitada, cerrarSesionReal,
+  consultarAvisosAsignacion, type AvisoAsignacion,
   type PerfilReal, type IncidenciaReal, type SesionReal, type ResumenReal,
 } from "./api"
 import RealRegister from "./RealRegister"
@@ -27,6 +28,69 @@ const titulos: Record<VistaReal, string> = {
   reportes: "Reportes",
 }
 const errorTexto = (error: unknown) => error instanceof Error ? error.message : "No se pudo completar la consulta."
+
+function CampanaAsignaciones({ token, usuarioId, abrir }: { token: string; usuarioId: string; abrir: (t: IncidenciaReal) => void }) {
+  const clave = "grocio-prado.avisos." + usuarioId
+  const [leidos, setLeidos] = useState<string[]>(() => {
+    try {
+      const guardados: unknown = JSON.parse(localStorage.getItem(clave) ?? "[]")
+      return Array.isArray(guardados) ? guardados.filter((id): id is string => typeof id === "string").slice(0, 100) : []
+    } catch { return [] }
+  })
+  const [avisos, setAvisos] = useState<AvisoAsignacion[]>([])
+  const [estado, setEstado] = useState("Consultando asignaciones…")
+  const menu = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    let vigente = true
+    let consulta: AbortController | undefined
+    async function actualizar() {
+      if (document.visibilityState === "hidden" || consulta) return
+      const control = new AbortController()
+      consulta = control
+      try {
+        const datos = await consultarAvisosAsignacion(token, AbortSignal.any([control.signal, AbortSignal.timeout(20_000)]))
+        if (vigente) { setAvisos(datos); setEstado("") }
+      } catch {
+        if (vigente) setEstado("No se pudieron consultar los avisos. Se reintentará automáticamente.")
+      } finally { consulta = undefined }
+    }
+    void actualizar()
+    const intervalo = window.setInterval(actualizar, 30_000)
+    window.addEventListener("focus", actualizar)
+    document.addEventListener("visibilitychange", actualizar)
+    return () => {
+      vigente = false
+      consulta?.abort()
+      window.clearInterval(intervalo)
+      window.removeEventListener("focus", actualizar)
+      document.removeEventListener("visibilitychange", actualizar)
+    }
+  }, [token])
+
+  const pendientes = avisos.filter(aviso => !leidos.includes(aviso.id)).length
+  function ver(aviso: AvisoAsignacion) {
+    const nuevos = [aviso.id, ...leidos.filter(id => id !== aviso.id)].slice(0, 100)
+    setLeidos(nuevos)
+    try { localStorage.setItem(clave, JSON.stringify(nuevos)) } catch { /* Conserva la lectura durante esta sesión. */ }
+    if (menu.current) menu.current.open = false
+    abrir(aviso.incidencia)
+  }
+  return <details className="assignment-notifications" ref={menu}>
+    <summary aria-label={"Notificaciones de asignación, " + pendientes + " sin leer"}><Icon name="bell" />{pendientes > 0 && <span aria-hidden="true">{pendientes}</span>}</summary>
+    <div className="card assignment-notification-panel">
+      <h2>Notificaciones</h2>
+      {estado && <p role="status">{estado}</p>}
+      {!estado && !avisos.length && <p>No tienes asignaciones activas de Jefatura.</p>}
+      {avisos.length > 0 && <ul>{avisos.map(aviso => <li key={aviso.id}>
+        <button type="button" data-sin-leer={!leidos.includes(aviso.id)} onClick={() => ver(aviso)}>
+          <Icon name="login-ticket" />
+          <span><strong>{aviso.incidencia.codigo} · {aviso.incidencia.asunto}</strong>
+            <small>{new Date(aviso.fecha_asignacion).toLocaleString("es-PE", { timeZone: "America/Lima" })}{!leidos.includes(aviso.id) && " · Sin leer"}</small></span>
+        </button>
+      </li>)}</ul>}
+    </div>
+  </details>
+}
 
 export default function RealApp() {
   const [tema, setTema] = useState<TemaReal>(() => {
@@ -325,14 +389,22 @@ export default function RealApp() {
             <Icon name={vista === "incidencias" ? "login-ticket" : vista === "atencion" ? "sidebar-wrench" : "shell-home"} />
             <div><p className="breadcrumb">Sistema de Gestión de Incidencias</p><h1>{ticketSeleccionado ? "Detalle de incidencia" : titulos[vista]}</h1></div>
           </div>
-          <div className="top-actions"><span className="connection-label"><i />Acceso institucional</span><button className="avatar avatar-button" aria-label="Abrir mi cuenta" onClick={() => navegar("cuenta")}>{iniciales}</button></div>
+          <div className="top-actions"><span className="connection-label"><i />Acceso institucional</span>
+            {(perfil.rol === "ASISTENTE" || perfil.rol === "PRACTICANTE") && <CampanaAsignaciones key={perfil.id} token={sesion.access_token} usuarioId={perfil.id} abrir={ticket => { navegar("incidencias"); abrirTicket(ticket) }} />}
+            <button className="avatar avatar-button" aria-label="Abrir mi cuenta" onClick={() => navegar("cuenta")}>{iniciales}</button>
+          </div>
         </header>
         <div className="page">
           {mensaje && <div className="notice real-message" role="status">{mensaje}</div>}
           {!vistaPermitida ? <div className="card empty"><h2>Esta sección requiere otro rol</h2><button className="outline" onClick={() => navegar("dashboard")}>Volver al panel</button></div> : vista === "usuarios" && jefe ? <RealAdministration token={sesion.access_token} perfil={perfil} /> : vista === "cuenta" ? (
             <RealAccount token={sesion.access_token} perfil={perfil} actualizar={actualizar} cargando={cargando} tema={tema} cambiarTema={cambiarTema} alCambiarClave={() => { limpiarSesion(); setMensaje("Contraseña actualizada. Inicia sesión con tu nueva contraseña.") }} />
           ) : vista === "registro" && representante ? (
-            <RealRegister token={sesion.access_token} perfil={perfil} onCancelar={() => navegar("incidencias")} onCreada={async (codigo) => { navegar("incidencias"); setMensaje(`Incidencia ${codigo} registrada correctamente.`); await cargarDatos(sesion.access_token) }} />
+            <RealRegister token={sesion.access_token} perfil={perfil} onCancelar={() => navegar("incidencias")} onCreada={async (ticket, verDetalle) => {
+              navegar("incidencias")
+              if (verDetalle) abrirTicket(ticket)
+              setMensaje(`Incidencia ${ticket.codigo} registrada correctamente.`)
+              await cargarDatos(sesion.access_token)
+            }} />
           ) : ticketSeleccionado ? (
             <RealTicketDetail token={sesion.access_token} ticket={ticketSeleccionado} rol={perfil.rol} onVolver={() => { setTicketSeleccionado(null); void actualizar() }} />
           ) : vista === "reportes" && jefe ? (

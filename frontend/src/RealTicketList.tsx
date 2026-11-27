@@ -9,7 +9,7 @@ export const fechaRegistro = (valor: string) => new Date(valor).toLocaleString("
 type Props = {
   incidencias: IncidenciaReal[]; cargando: boolean; disponible: boolean; actualizado?: string
   titulo: string; descripcion?: string; tituloVacio?: string; limiteVisible?: number; accion?: ReactNode
-  vistaCompleta?: { modo: "incidencias"; rol: Rol; usuarioId: string } | { modo: "atenciones" }
+  vistaCompleta?: { modo: "incidencias"; rol: Rol; usuarioId: string } | { modo: "atenciones" | "asignaciones" }
   abrirDetalle: (ticket: IncidenciaReal) => void
 }
 
@@ -50,8 +50,9 @@ export function BannerIncidencias({ titulo, descripcion }: { titulo: string; des
 export default function RealTicketList({ incidencias, cargando, disponible, actualizado, titulo, descripcion, tituloVacio = "Todavía no hay incidencias", limiteVisible, accion, vistaCompleta, abrirDetalle }: Props) {
   const expandida = Boolean(vistaCompleta)
   const atenciones = vistaCompleta?.modo === "atenciones"
+  const asignaciones = vistaCompleta?.modo === "asignaciones"
   const listado = vistaCompleta?.modo === "incidencias" ? vistaCompleta : undefined
-  const jefe = listado?.rol === "JEFE"
+  const jefe = listado?.rol === "JEFE" || asignaciones
   const representante = listado?.rol === "REPRESENTANTE"
   const tecnico = listado?.rol === "ASISTENTE" || listado?.rol === "PRACTICANTE"
   const tituloFiltros = atenciones ? "Filtros de atención" : "Filtros de búsqueda"
@@ -60,7 +61,7 @@ export default function RealTicketList({ incidencias, cargando, disponible, actu
   const [aplicados, setAplicados] = useState(filtrosIniciales)
   const [pagina, setPagina] = useState(1)
   const [orden, setOrden] = useState<{ campo: Ordenable; ascendente: boolean }>({ campo: atenciones ? "Asignación" : "Registro", ascendente: false })
-  const filtros = expandida ? aplicados : borrador
+  const filtros = expandida && !asignaciones ? aplicados : borrador
   const filtrando = Object.values(filtros).some(Boolean)
   const desde = inicioPeriodo(filtros.periodo)
   const consulta = normalizar(filtros.busqueda.trim())
@@ -96,6 +97,7 @@ export default function RealTicketList({ incidencias, cargando, disponible, actu
 
   function cambiar(campo: keyof Filtros, valor: string) {
     setBorrador(anterior => ({ ...anterior, [campo]: valor }))
+    if (asignaciones) setPagina(1)
   }
   function aplicar(evento: FormEvent) {
     evento.preventDefault()
@@ -113,7 +115,7 @@ export default function RealTicketList({ incidencias, cargando, disponible, actu
   }
 
   return <>
-    {expandida && <form className="card incident-filters" onSubmit={aplicar} aria-label={tituloFiltros}>
+    {expandida && !asignaciones && <form className="card incident-filters" onSubmit={aplicar} aria-label={tituloFiltros}>
       <h3><Icon name="filter" />{tituloFiltros}</h3>
       <div className="incident-filter-grid">
         <label className="incident-search-label">Buscar<span className="incident-search"><Icon name="search" /><input placeholder={representante ? "Código o asunto…" : jefe ? "Código, asunto, área o responsable…" : "Código, asunto o área…"} value={borrador.busqueda} onChange={e => cambiar("busqueda", e.target.value)} /></span></label>
@@ -128,7 +130,9 @@ export default function RealTicketList({ incidencias, cargando, disponible, actu
     </form>}
     <section className="card table-card" aria-busy={cargando}>
       <div className="section-head"><div><h3>{expandida && <Icon name="clipboard" />}{titulo}{expandida && disponible && <span className="incident-count">{filtradas.length} {filtradas.length === 1 ? "resultado" : "resultados"}</span>}</h3><p>{descripcion || "Últimos 50 registros autorizados"}{actualizado && (" · Actualizado a las " + actualizado)}</p></div>{accion}</div>
-      {!expandida && <div className="filters real-filters"><label className="search"><Icon name="search" /><input aria-label="Buscar en los registros cargados" placeholder="Buscar código, asunto, área o responsable…" value={borrador.busqueda} onChange={e => cambiar("busqueda", e.target.value)} /></label><select aria-label="Filtrar por estado" value={borrador.estado} onChange={e => cambiar("estado", e.target.value)}><option value="">Todos los estados</option>{estados.map(e => <option key={e}>{e}</option>)}</select></div>}
+      {(!expandida || asignaciones) && <div className="filters real-filters"><label className="search"><Icon name="search" /><input aria-label="Buscar en los registros cargados" placeholder="Buscar código, asunto, área o responsable…" value={borrador.busqueda} onChange={e => cambiar("busqueda", e.target.value)} /></label><select aria-label="Filtrar por estado" value={borrador.estado} onChange={e => cambiar("estado", e.target.value)}><option value="">Todos los estados</option>{estados.map(e => <option key={e}>{e}</option>)}</select>
+        {asignaciones && <select aria-label="Filtrar por responsable" value={borrador.responsable} onChange={e => cambiar("responsable", e.target.value)}><option value="">Todos los responsables</option>{[...responsables].map(([id, nombre]) => <option value={id} key={id}>{nombre}</option>)}</select>}
+      </div>}
       {!disponible ? <div className="empty" role="status"><Icon name="clipboard" /><h3>{cargando ? "Consultando incidencias…" : "Listado no disponible"}</h3><p>{cargando ? "Obteniendo los registros autorizados para tu perfil." : "Actualiza para reintentar la consulta."}</p></div> : <><div className="table-wrap" tabIndex={0} role="region" aria-label={titulo}>
         <table className="real-ticket-table"><thead><tr>{columnas.map(columna => expandida && (columna === "Código" || columna === "Registro" || columna === "Asignación") ?
           <th scope="col" key={columna} aria-sort={orden.campo === columna ? orden.ascendente ? "ascending" : "descending" : "none"}><button type="button" className="incident-sort" onClick={() => ordenar(columna)}>{columna}<span aria-hidden="true">{orden.campo === columna ? orden.ascendente ? "↑" : "↓" : "↕"}</span></button></th> :

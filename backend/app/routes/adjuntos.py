@@ -5,7 +5,7 @@ from fastapi.responses import Response
 from sqlalchemy import select,text,func
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from app.auth import get_current_user
+from app.auth import get_current_user, require_roles
 from app.db import get_db
 from app.config import get_settings
 from app.models import Incidencia,Evidencia,Usuario,Asignacion
@@ -30,10 +30,7 @@ def puede_adjuntar(db,ticket,usuario):
 def metadata(e):
     return {k:getattr(e,k) for k in ['id','nombre_archivo','tipo_archivo','tamano_bytes','usuario_id','fecha_registro']}
 
-@router.get('/{incidencia_id}/adjuntos')
-def listar(incidencia_id:UUID,usuario:Usuario=Depends(get_current_user),db:Session=Depends(get_db)):
-    ticket=ticket_autorizado(db,incidencia_id,usuario)
-    rows=db.scalars(select(Evidencia).where(Evidencia.incidencia_id==incidencia_id).order_by(Evidencia.fecha_registro,Evidencia.id)).all()
+def configuracion_carga():
     habilitado=get_settings().adjuntos_habilitados
     tipos,maximo=list(TIPOS),MAX_BYTES
     motivo='Carga pendiente de configurar y validar el almacenamiento privado.'
@@ -42,8 +39,22 @@ def listar(incidencia_id:UUID,usuario:Usuario=Depends(get_current_user),db:Sessi
             tipos,maximo=limites_storage(get_storage().verificar_privacidad())
             motivo='Almacenamiento privado verificado.'
         except HTTPException:habilitado=False;motivo='El almacenamiento privado no está verificado; la carga permanece deshabilitada.'
-    return {'archivos':[metadata(e) for e in rows],'carga_habilitada':habilitado and puede_adjuntar(db,ticket,usuario),
-        'maximo_bytes':maximo,'tipos':tipos,'motivo':motivo}
+    return {'carga_habilitada':habilitado,'maximo_bytes':maximo,'tipos':tipos,'motivo':motivo}
+
+
+@router.get('/adjuntos/configuracion-registro')
+def configuracion_registro(_usuario: Usuario = Depends(require_roles("REPRESENTANTE"))):
+    return configuracion_carga()
+
+
+@router.get('/{incidencia_id}/adjuntos')
+def listar(incidencia_id:UUID,usuario:Usuario=Depends(get_current_user),db:Session=Depends(get_db)):
+    ticket=ticket_autorizado(db,incidencia_id,usuario)
+    rows=db.scalars(select(Evidencia).where(Evidencia.incidencia_id==incidencia_id).order_by(Evidencia.fecha_registro,Evidencia.id)).all()
+    config = configuracion_carga()
+    if config['carga_habilitada'] and not puede_adjuntar(db,ticket,usuario):
+        config.update(carga_habilitada=False, motivo='Solo el área solicitante o el responsable activo pueden adjuntar a una incidencia abierta.')
+    return {'archivos':[metadata(e) for e in rows],**config}
 
 @router.post('/{incidencia_id}/adjuntos',status_code=201)
 async def subir(incidencia_id:UUID,request:Request,nombre:str=Query(min_length=1,max_length=200),usuario:Usuario=Depends(get_current_user),db:Session=Depends(get_db)):

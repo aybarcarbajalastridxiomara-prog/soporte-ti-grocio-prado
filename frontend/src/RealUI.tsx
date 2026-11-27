@@ -10,6 +10,8 @@ export function Icon({ name }: { name: string }) {
     trash: "M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7",
     search: "m21 21-4.5-4.5M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0",
     filter: "M3 4h18l-7 8v6l-4 2v-8z",
+    bell: "M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21a2 2 0 0 0 4 0",
+    paperclip: "m9 15 7-7a3 3 0 0 0-4-4l-8 8a5 5 0 0 0 7 7l8-8m-2-5-8 8a1 1 0 0 0 2 2l7-7",
     plus: "M12 5v14M5 12h14",
     arrow: "m9 18 6-6-6-6",
     check: "m5 12 4 4L19 6",

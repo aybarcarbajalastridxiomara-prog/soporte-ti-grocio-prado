@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { Icon } from "./RealUI"
 import { consultarToma, tomarIncidencia, type ContextoToma } from "./tiOperations"
 
 const escritura = import.meta.env.VITE_PERMITIR_ASIGNACION_REAL === "true"
@@ -28,7 +29,7 @@ export default function RealTake({ token, ticketId, onActualizada }: {token: str
     finally { setOcupado(false) }
   }
   return <section className="card real-form real-operation" aria-label="Toma autorizada">
-    <h3>Atender esta incidencia</h3>
+    <h3><Icon name="login-headset" />Atender esta incidencia</h3>
     {error && <p role="alert" className="auth-error">{error}</p>}
     {!contexto && !error && <p role="status">Consultando disponibilidad…</p>}
     {contexto && <><p>{contexto.motivo}</p>{contexto.puede_tomar && <>
