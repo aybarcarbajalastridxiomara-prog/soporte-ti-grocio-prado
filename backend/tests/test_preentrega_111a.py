@@ -249,6 +249,44 @@ class Preentrega111A(unittest.TestCase):
             self.assertEqual(self.client.post("/api/usuarios/invitar", json={**self.invitacion(), "usuario": "otra_prueba"}).status_code, 409)
         self.assertEqual(self.client.get("/api/me").json()["rol"], "JEFE")
 
+    def test_invitacion_valida_rol_area_y_usuario_antes_de_contactar_auth(self):
+        with Session(self.engine) as db:
+            db.get(Area, self.area).nombre = "Unidad de Racionalización e Informática"
+            db.get(Usuario, self.ids["ASISTENTE"]).usuario = "MARIA.CHAVEZ"
+            db.commit()
+
+        with patch("app.routes.usuarios.invitar_en_supabase") as externo:
+            for cambios, estado in (
+                ({"rol": "JEFE"}, 422),
+                ({"rol": "ASISTENTE", "area_id": str(self.otra_area)}, 422),
+                ({"rol": "PRACTICANTE", "area_id": str(self.otra_area)}, 422),
+                ({"area_id": str(self.inactiva)}, 422),
+                ({"usuario": "maría.chavez"}, 422),
+                ({"usuario": "Maria.Chavez"}, 422),
+                ({"usuario": "maria.chavez"}, 409),
+            ):
+                with self.subTest(cambios=cambios):
+                    respuesta = self.client.post("/api/usuarios/invitar", json={**self.invitacion(), **cambios})
+                    self.assertEqual(respuesta.status_code, estado, respuesta.text)
+            externo.assert_not_called()
+
+    def test_invita_personal_tecnico_en_informatica(self):
+        with Session(self.engine) as db:
+            db.get(Area, self.area).nombre = "Unidad de Racionalización e Informática"
+            db.commit()
+
+        def default_fecha(mapper, connection, target):
+            target.fecha_creacion = datetime.now(timezone.utc)
+
+        event.listen(Usuario, "before_insert", default_fecha)
+        self.addCleanup(event.remove, Usuario, "before_insert", default_fecha)
+        for rol in ("ASISTENTE", "PRACTICANTE"):
+            with self.subTest(rol=rol), patch("app.routes.usuarios.invitar_en_supabase", return_value={"id": str(uuid4())}) as externo:
+                respuesta = self.client.post("/api/usuarios/invitar", json={**self.invitacion(), "usuario": f"alta.{rol.lower()}", "rol": rol})
+                self.assertEqual(respuesta.status_code, 201, respuesta.text)
+                self.assertEqual(respuesta.json()["area_id"], str(self.area))
+                externo.assert_called_once()
+
     def test_cupo_completo_se_rechaza_antes_de_crear_identidad_auth(self):
         with Session(self.engine) as db:
             db.get(Usuario, self.ids["PRACTICANTE"]).rol = "REPRESENTANTE"

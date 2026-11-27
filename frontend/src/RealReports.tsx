@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react"
 import type { IncidenciaReal } from "./api"
-import { Badge, BannerInstitucional, Icon } from "./RealUI"
+import { Badge, BannerInstitucional, Icon, VerIncidencia } from "./RealUI"
 import { consultarCatalogosReporte, consultarReporte, descargarReporte, filtrosVacios,
   type CatalogosReporte, type FiltrosReporte, type GrupoReporte, type ReporteReal } from "./reportes"
 
@@ -18,6 +18,7 @@ function Desglose({ titulo, grupos, icono }: { titulo: string; grupos: GrupoRepo
 }
 
 export default function RealReports({ token, abrirDetalle }: { token: string; abrirDetalle: (t: IncidenciaReal) => void }) {
+  const [mostrarFiltros, setMostrarFiltros] = useState(false)
   const [borrador, setBorrador] = useState<FiltrosReporte>({ ...filtrosVacios })
   const [aplicados, setAplicados] = useState<FiltrosReporte>({ ...filtrosVacios })
   const [catalogos, setCatalogos] = useState<CatalogosReporte | null>(null)
@@ -31,6 +32,7 @@ export default function RealReports({ token, abrirDetalle }: { token: string; ab
   const [errorExportacion, setErrorExportacion] = useState("")
   const [estadoDescarga, setEstadoDescarga] = useState("")
   const [recarga, setRecarga] = useState(0)
+  const botonFiltros = useRef<HTMLButtonElement>(null)
   const descarga = useRef<AbortController | null>(null)
   const generacion = useRef(0)
   const pendiente = JSON.stringify(borrador) !== JSON.stringify(aplicados)
@@ -63,7 +65,8 @@ export default function RealReports({ token, abrirDetalle }: { token: string; ab
 
   function filtrar(evento: FormEvent) {
     evento.preventDefault()
-    setPagina(1); setAplicados({ ...borrador })
+    setPagina(1); setAplicados({ ...borrador }); setMostrarFiltros(false)
+    botonFiltros.current?.focus()
   }
 
   function limpiar() {
@@ -104,10 +107,15 @@ export default function RealReports({ token, abrirDetalle }: { token: string; ab
 
   return <div className="real-reports">
     <BannerInstitucional icono="reports" titulo="Reportes institucionales" descripcion="Consulta y exporta el consolidado de incidencias municipales." />
-    <section className="card report-filter-card"><div className="section-head"><div className="institutional-heading"><Icon name="filter" /><div><h3>Filtros del reporte</h3><p>Las fechas corresponden a la hora de Lima. Los filtros se aplican a todo el reporte.</p></div></div>
+    <div className="report-toolbar">
+      <button ref={botonFiltros} className="outline" type="button" aria-expanded={mostrarFiltros} aria-controls="filtros-del-reporte" onClick={() => setMostrarFiltros(visible => !visible)}>
+        <Icon name="filter" />{mostrarFiltros ? "Ocultar filtros" : pendiente ? "Filtros sin aplicar" : "Filtros"}
+      </button>
       <div className="real-actions"><button className="outline" disabled={cargando || !!exportando} onClick={() => setRecarga(n => n + 1)}><Icon name="refresh" />Actualizar</button>
         <button className="outline" disabled={bloquear || !reporte?.exportacion.formatos.includes("pdf")} onClick={() => void exportar("pdf")}><Icon name="download" />{exportando === "pdf" ? "Generando PDF…" : "Exportar PDF"}</button>
-        <button className="primary" disabled={bloquear || !reporte?.exportacion.formatos.includes("xlsx")} onClick={() => void exportar("xlsx")}><Icon name="download" />{exportando === "xlsx" ? "Generando Excel…" : "Exportar Excel"}</button></div></div>
+        <button className="primary" disabled={bloquear || !reporte?.exportacion.formatos.includes("xlsx")} onClick={() => void exportar("xlsx")}><Icon name="download" />{exportando === "xlsx" ? "Generando Excel…" : "Exportar Excel"}</button></div>
+    </div>
+    <section id="filtros-del-reporte" className="card report-filter-card" aria-label="Filtros del reporte" hidden={!mostrarFiltros}>
       <form onSubmit={filtrar}><fieldset disabled={cargando || !!exportando} className="report-filters">
         <legend className="visually-hidden">Seleccionar filtros institucionales</legend>
         <label><span><Icon name="clock" />Desde</span><input type="date" value={borrador.desde} max={borrador.hasta || undefined} onChange={e => campo("desde", e.target.value)} /></label>
@@ -118,8 +126,8 @@ export default function RealReports({ token, abrirDetalle }: { token: string; ab
         <label><span><Icon name="user" />Responsable actual o de cierre</span><select disabled={!catalogos} value={borrador.responsable_id} onChange={e => campo("responsable_id", e.target.value)}><option value="">Todos los responsables</option><option value="sin_responsable">Sin responsable</option>{catalogos?.responsables.map(p => <option key={p.id} value={p.id}>{p.nombre} · {p.rol}{!p.habilitado ? " (deshabilitado)" : ""}</option>)}</select></label>
       </fieldset><div className="report-filter-actions"><p className="help">{pendiente ? "Hay filtros pendientes de aplicar." : "Las estadísticas incluyen todas las coincidencias, no solo la página visible."}</p>
         <div className="real-actions"><button className="outline" type="button" disabled={cargando || !!exportando} onClick={limpiar}>Limpiar</button><button className="primary" type="submit" disabled={cargando || !!exportando}>Aplicar filtros</button></div></div></form>
-      {errorCatalogos && <p className="auth-error" role="alert">Catálogos no disponibles: {errorCatalogos} Pulsa Actualizar para reintentar.</p>}
     </section>
+    {errorCatalogos && <p className="auth-error" role="alert">No se pudieron cargar las áreas o los responsables. Pulsa Actualizar para reintentar.</p>}
     {error && <div className="auth-error" role="alert">{error}</div>}
     {errorExportacion && <div className="auth-error" role="alert">{errorExportacion}</div>}
     {estadoDescarga && <p className="notice" role="status">{estadoDescarga}</p>}
@@ -132,7 +140,7 @@ export default function RealReports({ token, abrirDetalle }: { token: string; ab
       <div className="report-breakdowns"><Desglose titulo="Por área municipal" grupos={reporte.desgloses.areas} icono="reports" /><Desglose titulo="Por prioridad oficial" grupos={reporte.desgloses.prioridades} icono="clipboard" /><Desglose titulo="Por responsable" grupos={reporte.desgloses.responsables} icono="user" /></div></>}
     <section className="card table-card report-results" aria-busy={cargando}><div className="section-head"><div><h3><Icon name="clipboard" />Incidencias del reporte {reporte && <span className="incident-count">{reporte.resumen.total} {reporte.resumen.total === 1 ? "coincidencia" : "coincidencias"}</span>}</h3><p>{reporte ? "Ordenadas por fecha de registro" : cargando ? "Consultando datos autorizados…" : "Consulta no disponible"}</p></div></div>
       <div className="table-wrap" role="region" tabIndex={0} aria-label="Incidencias del reporte institucional"><table className="real-ticket-table"><thead><tr>{["Código", "Asunto", "Área", "Registro", "Prioridad", "Estado", "Responsable", "Acciones"].map(c => <th scope="col" key={c}>{c}</th>)}</tr></thead><tbody>{reporte?.incidencias.map(t => <tr key={t.id}>
-        <td><b className="code">{t.codigo}</b></td><td title={t.asunto}>{t.asunto}</td><td>{t.area_nombre || "Área no disponible"}</td><td>{fecha(t.fecha_registro)}</td><td><Badge>{t.prioridad || "Pendiente de evaluación"}</Badge>{!t.prioridad && t.prioridad_revision_pendiente && <small className="cell-caption">Provisional: {t.prioridad_provisional} · revisión JEFE</small>}</td><td><Badge>{t.estado}</Badge></td><td>{t.responsable_nombre || "Sin responsable"}{t.responsable_tipo === "cierre" && <small className="cell-caption">Cerrado por</small>}</td><td><button className="row-action" aria-label={`Ver detalle de ${t.codigo}`} onClick={() => abrirDetalle(t)}>Ver<Icon name="arrow" /></button></td>
+        <td><b className="code">{t.codigo}</b></td><td title={t.asunto}>{t.asunto}</td><td>{t.area_nombre || "Área no disponible"}</td><td>{fecha(t.fecha_registro)}</td><td><Badge>{t.prioridad || "Pendiente de evaluación"}</Badge>{!t.prioridad && t.prioridad_revision_pendiente && <small className="cell-caption">Provisional: {t.prioridad_provisional} · revisión JEFE</small>}</td><td><Badge>{t.estado}</Badge></td><td>{t.responsable_nombre || "Sin responsable"}{t.responsable_tipo === "cierre" && <small className="cell-caption">Cerrado por</small>}</td><td><VerIncidencia codigo={t.codigo} abrir={() => abrirDetalle(t)} /></td>
       </tr>)}</tbody></table></div>
       {(!reporte || !reporte.incidencias.length) && <div className="empty" role="status"><Icon name="reports" /><h3>{cargando ? "Preparando reporte…" : error ? "Reporte no disponible" : reporte?.resumen.total ? "Página sin registros" : "Sin incidencias para estos filtros"}</h3><p>{error ? "Actualiza para reintentar. Los errores no representan un total de cero." : "Conservamos las cabeceras y los totales reales, incluidos los ceros."}</p></div>}
       <div className="pagination report-pagination"><span>{reporte ? `${primero}–${ultimo} de ${reporte.resumen.total} coincidencias` : "Sin resultados disponibles"}</span>

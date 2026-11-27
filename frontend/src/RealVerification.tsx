@@ -121,7 +121,7 @@ export default function RealVerification({ token, ticketId, onActualizada }: Pro
       setExito(resultado === "Observación"
         ? vigente.esquema_v4
           ? "Observación registrada. El ticket fue reabierto para un nuevo ciclo."
-          : "Observación registrada. La reapertura automática requiere V4."
+          : "Observación registrada. La incidencia permanece cerrada."
         : "Conformidad registrada correctamente.")
       setResultado("")
       setObservaciones("")
@@ -147,29 +147,29 @@ export default function RealVerification({ token, ticketId, onActualizada }: Pro
         <div>
           <h3 style={{ margin: "0 0 5px", color: "#183958" }}>Verificación del área solicitante</h3>
           <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>
-            Registra tu conformidad o una observación de la atención técnica.
+            {contexto?.evaluacion_actual ? "Resultado de la revisión del área solicitante." : "Registra tu conformidad o una observación de la atención técnica."}
           </p>
         </div>
         {contexto && (
           <strong style={{ color: "#245897", fontSize: 12 }}>
-            Ciclo {contexto.ciclo_actual} · {contexto.esquema_v4 ? "Esquema V4" : "Esquema V3"}
+            Ciclo {contexto.ciclo_actual}
           </strong>
         )}
       </div>
       {cargando && <p role="status">Consultando cierre y evaluaciones...</p>}
       {error && <p role="alert" style={{ color: "#b42332", margin: 0 }}>{error}</p>}
       {exito && <p role="status" style={{ color: "#177044", margin: 0, fontWeight: 600 }}>{exito}</p>}
-      {!escrituraHabilitada && (
+      {disponible && !escrituraHabilitada && (
         <p style={{ margin: 0, color: "#80631d", fontSize: 13 }}>
-          Registro deshabilitado hasta autorizar pruebas en un entorno seguro.
+          El registro de evaluaciones no está disponible en este momento.
         </p>
       )}
       {contexto?.evaluacion_actual && (
         <div style={{ background: "#f1f7fc", padding: 14, borderRadius: 10 }}>
-          <strong>Este ciclo ya tiene una evaluación: {contexto.evaluacion_actual.resultado}</strong>
-          <p style={{ margin: "5px 0 0" }}>
-            {contexto.evaluacion_actual.observaciones || "Sin observaciones adicionales."}
-          </p>
+          <strong>Evaluación registrada: {contexto.evaluacion_actual.resultado}</strong>
+          {contexto.evaluacion_actual.observaciones && <p style={{ margin: "5px 0 0" }}>
+            {contexto.evaluacion_actual.observaciones}
+          </p>}
         </div>
       )}
       {contexto && !contexto.puede_verificar && !contexto.evaluacion_actual && (
@@ -214,7 +214,7 @@ export default function RealVerification({ token, ticketId, onActualizada }: Pro
             <p style={{ margin: 0, color: "#98551e", fontSize: 13 }}>
               {contexto.esquema_v4
                 ? "Al enviar, se reabrirá este ticket en un nuevo ciclo y requerirá nueva asignación."
-                : "Esta base todavía utiliza V3: se registrará la observación, pero no habrá reapertura automática."}
+                : "La observación se guardará en el historial y la incidencia permanecerá cerrada."}
             </p>
           )}
           <label style={{ display: "flex", alignItems: "start", gap: 9, fontSize: 13, color: "#344860" }}>

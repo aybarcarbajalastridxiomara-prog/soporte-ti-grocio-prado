@@ -111,23 +111,6 @@ export default function RealDashboard({ vista, perfil, incidencias, resumen, car
   const propiasActivas = seleccionadas.filter(t => t.responsable_tipo === "activo")
   const propuestas = seleccionadas.filter(t => !t.prioridad && t.prioridad_revision_pendiente).length
   const indefinidas = seleccionadas.filter(t => prioridadDe(t) === "Sin definir").length
-  const altas = seleccionadas.filter(t => prioridadDe(t) === "Alta").length
-  const tarjetas = asistente ? [
-    { numero: indicadores?.total, etiqueta: "Mis asignaciones activas", color: "blue", icono: "login-ticket" },
-    { numero: indicadores && altas, etiqueta: "Prioridad alta", color: "amber", icono: "dashboard-trend" },
-    { numero: indicadores && propuestas, etiqueta: "Propuestas por revisar", color: "violet", icono: "clock" },
-    { numero: indicadores && indefinidas, etiqueta: "Sin prioridad definida", color: "green", icono: "login-bars" },
-  ] : practicante ? [
-    { numero: indicadores?.total, etiqueta: "Mis incidencias", color: "blue", icono: "login-ticket" },
-    { numero: indicadores && propiasActivas.length, etiqueta: "Asignaciones activas", color: "amber", icono: "clock" },
-    { numero: indicadores?.en_revision, etiqueta: "En revisión", color: "violet", icono: "tool" },
-    { numero: indicadores?.cerradas, etiqueta: "Cerradas por mí", color: "green", icono: "check" },
-  ] : [
-    { numero: indicadores?.total, etiqueta: representante ? "Solicitudes de mi área" : "Total de incidencias", color: "blue", icono: "login-ticket" },
-    { numero: indicadores?.pendientes, etiqueta: "Pendientes", color: "amber", icono: "clock" },
-    { numero: indicadores?.en_revision, etiqueta: "En revisión", color: "violet", icono: "tool" },
-    { numero: indicadores?.cerradas, etiqueta: "Cerradas", color: "green", icono: "check" },
-  ]
   const partes = estados.map(e => ({ ...e, cantidad: indicadores?.[e.clave] ?? 0 }))
   let acumulado = 0
   const arcos = partes.map(({ cantidad, color }) => {
@@ -167,9 +150,6 @@ export default function RealDashboard({ vista, perfil, incidencias, resumen, car
 
   return <div className="real-main-dashboard">
     <BannerInstitucional icono="dashboard" titulo={`¡Hola, ${perfil.nombre_completo}!`} descripcion={textosRol[perfil.rol]} />
-    <div className="kpis four" aria-label="Indicadores generales">
-      {tarjetas.map(t => <article className="kpi" key={t.etiqueta}><span className={`kpi-icon ${t.color}`}><Icon name={t.icono} /></span><div><b>{t.numero ?? "—"}</b><p>{t.etiqueta}</p></div></article>)}
-    </div>
     <form className="card real-analysis-filters" onSubmit={e => { e.preventDefault(); setFiltros(borrador) }}>
       <h3><Icon name="dashboard-filter" /> Filtros de análisis</h3>
       <label>Periodo<select value={borrador.periodo} onChange={e => campo("periodo", e.target.value)}><option value="">Todo el periodo</option><option value="7">Últimos 7 días</option><option value="30">Últimos 30 días</option></select></label>

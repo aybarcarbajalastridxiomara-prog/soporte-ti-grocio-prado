@@ -43,9 +43,7 @@ export default function RealPriority({ token, ticketId, rol, onActualizada }: {t
     {!contexto && !error && <p role="status">Consultando evaluación…</p>}
     {contexto && <>
       <div className="form-row"><p>Oficial: <strong>{contexto.oficial || "Pendiente de evaluación"}</strong></p><p>Sugerida por impacto: <strong>{contexto.sugerida || "Pendiente de evaluación"}</strong></p></div>
-      <p className="help">La sugerencia es orientativa; no establece la prioridad oficial.</p>
       {contexto.revision_pendiente && <div className="notice" role="status"><b>Provisional: {contexto.provisional} · pendiente de revisión del JEFE</b><p>{contexto.justificacion}</p></div>}
-      <p>{contexto.motivo}</p>
       {autorizado && <form onSubmit={guardar}><fieldset disabled={ocupado || !escritura}>
         <label>Prioridad a {contexto.operacion === "provisional" ? "proponer" : "confirmar"}<select required value={prioridad} onChange={e => setPrioridad(e.target.value as Prioridad | "")}><option value="">Seleccione</option><option>Alta</option><option>Media</option><option>Baja</option></select></label>
         <label>Justificación *<textarea required minLength={5} maxLength={1000} rows={3} value={motivo} onChange={e => setMotivo(e.target.value)} /></label>
