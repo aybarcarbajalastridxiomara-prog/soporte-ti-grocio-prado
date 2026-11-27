@@ -43,10 +43,10 @@ class ReportesContrato(unittest.TestCase):
         with ZipFile(BytesIO(excel)) as archivo:
             self.assertIn("xl/workbook.xml", archivo.namelist())
         libro = load_workbook(BytesIO(excel))
-        self.assertEqual(libro["Incidencias"].max_row, 1)
-        self.assertEqual(libro["Incidencias"]["A1"].value, "Código")
-        self.assertEqual(libro["Resumen"]["A1"].value, MUNICIPALIDAD)
-        self.assertEqual(libro["Resumen"]["B7"].value, 0)
+        self.assertEqual(libro["Incidencias"].max_row, 7)
+        self.assertEqual(libro["Incidencias"]["B7"].value, "Código")
+        self.assertEqual(libro["Resumen"]["C1"].value, MUNICIPALIDAD.upper())
+        self.assertEqual(libro["Resumen"]["A8"].value, 0)
         libro.close()
         pdf = generar_pdf(datos)
         self.assertTrue(pdf.startswith(b"%PDF-"))
@@ -57,15 +57,22 @@ class ReportesContrato(unittest.TestCase):
             fecha_registro=datetime(2026, 11, 18, 5, tzinfo=timezone.utc), prioridad=None,
             prioridad_revision_pendiente=True, prioridad_provisional="Alta", estado="En revisión", responsable_nombre="Técnico ficticio")
             for i, texto in enumerate(['=HYPERLINK("https://externo.invalid","x")', "+SUM(1,2)", "@SUM(A1:A2)", "-1+2", "#REF!"])]
-        excel = generar_excel(datos_ficticios(filas))
+        datos = datos_ficticios(filas)
+        datos["desgloses"]["responsables"] = [{"nombre": "Técnico ficticio", "total": len(filas)}]
+        excel = generar_excel(datos)
         libro = load_workbook(BytesIO(excel))
-        for indice, fila in enumerate(filas, start=2):
-            celda = libro["Incidencias"].cell(indice, 2)
+        for indice, fila in enumerate(filas, start=8):
+            celda = libro["Incidencias"].cell(indice, 3)
             self.assertEqual(celda.value, fila["asunto"])
             self.assertEqual(celda.data_type, "s")
             self.assertIsNone(celda.hyperlink)
-        self.assertEqual(libro["Incidencias"]["D2"].value.hour, 0)
-        self.assertIn("provisional: Alta", libro["Incidencias"]["E2"].value)
+        self.assertEqual(libro.sheetnames, ["Resumen", "Filtros", "Incidencias"])
+        self.assertEqual(libro["Incidencias"].freeze_panes, "A8")
+        self.assertEqual(libro["Incidencias"].auto_filter.ref, "A7:H12")
+        self.assertEqual(libro["Incidencias"]["E8"].value.hour, 0)
+        self.assertIn("provisional: Alta", libro["Incidencias"]["F8"].value)
         libro.close()
         with ZipFile(BytesIO(excel)) as archivo:
+            self.assertEqual(sum(n.startswith("xl/charts/chart") for n in archivo.namelist()), 2)
+            self.assertTrue(any(n.startswith("xl/media/") for n in archivo.namelist()))
             self.assertFalse(any("vba" in n.lower() or "externallinks" in n.lower() for n in archivo.namelist()))
