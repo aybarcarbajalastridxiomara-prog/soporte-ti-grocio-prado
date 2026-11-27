@@ -1170,7 +1170,7 @@
 .real-app .assignment-notifications > summary::-webkit-details-marker { display: none; }
 .real-app .assignment-notifications > summary .icon { width: 22px; height: 22px; }
 .real-app .assignment-notifications > summary span { position: absolute; right: -5px; top: -5px; min-width: 18px; padding: 1px 4px; border: 1px solid #fff; border-radius: 20px; background: #bd273a; color: #fff; text-align: center; font-size: .68rem; font-weight: 700; }
-.real-app .assignment-notification-panel { position: absolute; z-index: 12; right: 0; top: calc(100% + 8px); width: min(320px, calc(100vw - 40px)); padding: 12px; box-shadow: 0 8px 28px #112f4926; }
+.real-app .assignment-notification-panel { position: absolute; z-index: 12; right: 0; top: calc(100% + 8px); width: 320px; max-width: calc(100vw - 40px); padding: 12px; box-shadow: 0 8px 28px #112f4926; }
 .real-app .assignment-notification-panel h2 { margin: 0 0 7px; font-size: 1rem; }
 .real-app .assignment-notification-panel ul { list-style: none; padding: 0; margin: 0; max-height: min(54vh, 360px); overflow-y: auto; }
 .real-app .assignment-notification-panel li + li { margin-top: 5px; }
