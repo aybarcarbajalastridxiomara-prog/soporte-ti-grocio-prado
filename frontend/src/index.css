@@ -395,15 +395,6 @@
     radial-gradient(ellipse 44% 65% at 94% 110%, #57a7ed60 99%, transparent);
 }
 
-.real-dashboard-banner-art .real-access-laptop {
-  --access-unit: .78px;
-  width: clamp(67px, 9vw, 116px);
-  height: 61%;
-  margin-bottom: 10px;
-  transform: skew(-7deg);
-  background: linear-gradient(135deg, #387fc2, #1763a2);
-}
-
 .real-app .page:has(> .real-main-dashboard) { padding-top: 18px; }
 .real-main-dashboard { display: grid; gap: 12px; color: #172e4b; }
 .real-main-dashboard .kpis { gap: 12px; margin: 0; }
@@ -457,21 +448,14 @@
 .real-dashboard-plot i b { position: absolute; left: 50%; bottom: 100%; translate: -50% -2px; color: #194069; font-size: 9px; font-style: normal; }
 .real-dashboard-trend ul { display: flex; justify-content: space-between; margin-inline: -6px; padding-top: 5px; color: #496280; font-size: 10px; }
 
-.real-dashboard-bottom { display: grid; grid-template-columns: minmax(0, 2.5fr) minmax(190px, 1fr); align-items: start; gap: 12px; }
-.real-dashboard-side { display: grid; gap: 12px; min-width: 0; }
+.real-dashboard-bottom { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 12px; }
+.real-dashboard-side { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(225px,100%),1fr)); gap: 12px; min-width: 0; }
 .real-dashboard-bottom > .table-card { min-width: 0; }
-.real-dashboard-bottom .real-ticket-table { min-width: 715px; table-layout: fixed; }
-.real-dashboard-bottom .real-ticket-table :is(th, td) { padding: 8px 9px; }
-.real-dashboard-bottom .real-ticket-table th:nth-child(1) { width: 13%; }
-.real-dashboard-bottom .real-ticket-table th:nth-child(2) { width: 21%; }
-.real-dashboard-bottom .real-ticket-table th:nth-child(3) { width: 12%; }
-.real-dashboard-bottom .real-ticket-table th:nth-child(4) { width: 14%; }
-.real-dashboard-bottom .real-ticket-table th:nth-child(5) { width: 9%; }
-.real-dashboard-bottom .real-ticket-table th:nth-child(6) { width: 10%; }
-.real-dashboard-bottom .real-ticket-table th:nth-child(7) { width: 13%; }
-.real-dashboard-bottom .real-ticket-table th:nth-child(8) { width: 8%; }
-.real-dashboard-bottom .real-ticket-table td { white-space: normal; overflow-wrap: anywhere; }
-.real-dashboard-bottom .row-action { padding-inline: 5px; }
+.real-main-dashboard .real-dashboard-bottom .real-ticket-table { min-width: 845px; table-layout: auto; }
+.real-dashboard-bottom .real-ticket-table :is(th, td) { padding: 10px; }
+.real-dashboard-bottom .real-ticket-table :is(.code, .badge, .row-action) { white-space: nowrap; }
+.real-dashboard-bottom .real-ticket-table td:nth-child(7) { white-space: normal; overflow-wrap: anywhere; }
+.real-dashboard-bottom .row-action { padding-inline: 5px; flex-wrap: nowrap; }
 .real-dashboard-bottom .row-action .icon { width: 13px; }
 .real-dashboard-followup > .real-dashboard-ring { margin: 8px auto; }
 .real-dashboard-followup > p { margin: 7px 0 12px; color: #435c7b; font-size: 12px; text-align: center; }
@@ -480,7 +464,6 @@
 @media (max-width: 1100px) and (min-width: 901px), (max-width: 710px) {
   .real-dashboard-charts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .real-dashboard-charts:not(.real-dashboard-charts-pair) > :last-child { grid-column: 1 / -1; }
-  .real-dashboard-bottom { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 520px) {
@@ -1259,4 +1242,72 @@
   .real-app .admin-hero { grid-template-columns: minmax(0,1fr); }
   .real-app .admin-directory-toolbar { padding: 10px 12px 5px; }
   .real-app .admin-directory-toolbar .real-actions { margin-left: auto; }
+}
+
+/* Reportes y pictogramas de los banners */
+.real-dashboard-banner-art .banner-topic-icon {
+  display: grid;
+  place-items: center;
+  width: clamp(50px, 6vw, 73px);
+  aspect-ratio: 1;
+  border: 1px solid #e4f2ff;
+  border-radius: 17px;
+  background: linear-gradient(145deg, #edf7ff, #c0e1ff);
+  color: #0e5db0;
+  box-shadow: 0 5px 13px #12477a30;
+  transform: rotate(-7deg);
+}
+.real-dashboard-banner-art .banner-topic-icon .icon { width: 54%; height: 54%; }
+
+.real-app .page:has(> .real-reports) { max-width: none; padding-top: 18px; padding-inline: clamp(14px, 2.3vw, 36px); }
+.real-app .real-reports { display: grid; grid-template-columns: minmax(0, 1fr); gap: 13px; }
+.real-app .real-reports > :is(.report-filter-card, .kpis, .report-breakdowns, .auth-error, .notice) { margin: 0; }
+.real-app .real-reports :is(.report-filter-card, .report-results, .report-breakdown, .kpi) {
+  border-color: var(--form-frame, #d6e5f6);
+  box-shadow: 0 3px 9px #1d477510;
+  border-radius: 13px;
+}
+.real-app .real-reports .report-filter-card { padding: 14px 16px; }
+.real-app .real-reports .report-filter-card > .section-head { align-items: center; }
+.real-app .real-reports .section-head h3 { font-weight: 750; }
+.real-app .real-reports .report-filter-card .real-actions { flex-wrap: wrap; gap: 6px; }
+.real-app .real-reports .report-filters { gap: 9px 14px; }
+.real-app .real-reports .report-filters label > span { display: flex; align-items: center; gap: 6px; }
+.real-app .real-reports .report-filters label > span .icon { width: 15px; height: 15px; color: var(--form-accent, #0865b8); }
+.real-app .real-reports .report-filters :is(input,select) { height: 38px; }
+.real-app .real-reports .report-filter-actions { flex-wrap: wrap; margin-top: 12px; }
+.real-app .real-reports .report-filter-actions .help { margin: 0; }
+.real-app .real-reports .report-kpis { gap: 10px; }
+.real-app .real-reports .report-kpis .kpi { --kpi-tint: #dbeaff; border-top: 3px solid var(--kpi-tint); padding: 12px; }
+.real-app .real-reports .report-kpis .report-kpi-amber { --kpi-tint: #ffd988; }
+.real-app .real-reports .report-kpis .report-kpi-violet { --kpi-tint: #c9baff; }
+.real-app .real-reports .report-kpis .report-kpi-green { --kpi-tint: #9cdcbd; }
+.real-app .real-reports .report-context { display: grid; gap: 5px; }
+.real-app .real-reports .report-context :is(.report-scope, .report-applied) { margin: 0; }
+.real-app .real-reports .report-scope { display: flex; align-items: center; gap: 5px; color: var(--form-muted, #435d7c); }
+.real-app .real-reports .report-scope .icon { width: 14px; height: 14px; }
+.real-app .real-reports .report-breakdowns { gap: 10px; }
+.real-app .real-reports .report-breakdown { min-width: 0; padding: 13px 14px; }
+.real-app .real-reports .report-breakdown ul { margin-top: 9px; }
+.real-app .real-reports .report-breakdown li { margin-bottom: 8px; }
+.real-app .real-reports .report-breakdown li:last-child { margin-bottom: 0; }
+.real-app .real-reports .report-breakdown li > div:first-child { margin-bottom: 4px; }
+.real-app .real-reports .report-results .section-head h3 { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.real-app .real-reports .report-results .section-head h3 > .icon { color: var(--form-accent, #0865b8); }
+.real-app .real-reports .report-results .real-ticket-table { min-width: 840px; table-layout: auto; }
+.real-app .real-reports .report-results th { background: #e8f1fc; }
+.real-app .real-reports .report-results th, .real-app .real-reports .report-results td { padding: 8px 9px; }
+.real-app .real-reports .report-results td:nth-child(2) { min-width: 144px; white-space: normal; overflow-wrap: anywhere; }
+.real-app .real-reports .report-results td:nth-child(3) { min-width: 88px; }
+.real-app .real-reports .report-results td:nth-child(7) { min-width: 110px; max-width: 165px; white-space: normal; overflow-wrap: anywhere; }
+.real-app .real-reports .report-results .badge, .real-app .real-reports .report-results .row-action { white-space: nowrap; }
+.real-app .real-reports .report-results tbody tr:nth-child(even) td { background: #f7faff; }
+.real-app[data-tema="oscuro"] .real-reports .report-results th { background: #203a54; }
+.real-app[data-tema="oscuro"] .real-reports .report-results tbody tr:nth-child(even) td { background: #192c43; }
+@media (min-width: 741px) {
+  .real-app .real-reports .report-breakdowns { grid-template-columns: repeat(3,minmax(0,1fr)); }
+}
+@media (max-width: 520px) {
+  .real-app .real-reports .report-filter-card .section-head .real-actions { width: 100%; }
+  .real-app .real-reports .report-filter-card .section-head .real-actions button { flex: 1 1 auto; width: auto; }
 }

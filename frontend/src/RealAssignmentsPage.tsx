@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react"
 import { solicitarAPI, type IncidenciaReal } from "./api"
 import RealAssignment from "./RealAssignment"
-import RealTicketList, { BannerIncidencias, fechaRegistro } from "./RealTicketList"
-import { Icon } from "./RealUI"
+import RealTicketList, { fechaRegistro } from "./RealTicketList"
+import { BannerInstitucional, Icon } from "./RealUI"
 
 type Evento = { id: string; accion: string; descripcion: string; fecha_registro: string }
 type Props = { token: string; incidencias: IncidenciaReal[]; cargando: boolean; actualizado: string; actualizar: () => void; abrirDetalle: (t: IncidenciaReal) => void }
@@ -23,7 +23,7 @@ export default function RealAssignmentsPage({ token, incidencias, cargando, actu
     return () => { vigente = false }
   }, [seleccion, token, recarga])
   return <div className="incident-directory">
-    <BannerIncidencias titulo="Asignación de incidencias" descripcion="Distribuye las incidencias al equipo técnico y da seguimiento a su atención." />
+    <BannerInstitucional icono="user-add" titulo="Asignación de incidencias" descripcion="Distribuye las incidencias al equipo técnico y da seguimiento a su atención." />
     <RealAssignment token={token} ticketId={seleccion} onAsignada={() => { actualizar(); setRecarga(n => n + 1) }} selectorIncidencia={<label>Incidencia<select aria-label="Seleccionar incidencia para asignación" value={seleccion} onChange={e => setSeleccion(e.target.value)}><option value="">Seleccione una incidencia</option>{incidencias.filter(t => t.estado !== "Cerrado").map(t => <option key={t.id} value={t.id}>{t.codigo} · {t.asunto}</option>)}</select></label>} />
     {seleccion && <section className="card"><h3>Historial de asignaciones</h3>{consultando ? <p role="status">Consultando historial…</p> : error ? <p role="alert" className="field-error">{error}</p> : eventos.length ? <ol className="real-history">{eventos.map(e => <li key={e.id}><b>{e.accion}</b><p>{e.descripcion}</p><small>{fechaRegistro(e.fecha_registro)}</small></li>)}</ol> : <p className="help">No hay asignaciones registradas para esta incidencia.</p>}</section>}
     <RealTicketList vistaCompleta={{ modo: "asignaciones" }} titulo="Incidencias y asignaciones" incidencias={incidencias} cargando={cargando} disponible={Boolean(actualizado)} actualizado={actualizado} abrirDetalle={abrirDetalle}

@@ -40,13 +40,6 @@ function tiempoRegistrado(minutos: number) {
   return minutos < 60 ? minutos + " min" : Math.floor(minutos / 60) + " h " + minutos % 60 + " min"
 }
 
-export function BannerIncidencias({ titulo, descripcion }: { titulo: string; descripcion: string }) {
-  return <section className="real-shell-greeting incident-hero">
-    <div><h2>{titulo}</h2><p>{descripcion}</p></div>
-    <div className="real-dashboard-banner-art" aria-hidden="true"><span className="real-access-laptop"><Icon name="login-headset" /></span></div>
-  </section>
-}
-
 export default function RealTicketList({ incidencias, cargando, disponible, actualizado, titulo, descripcion, tituloVacio = "Todavía no hay incidencias", limiteVisible, accion, vistaCompleta, abrirDetalle }: Props) {
   const expandida = Boolean(vistaCompleta)
   const atenciones = vistaCompleta?.modo === "atenciones"

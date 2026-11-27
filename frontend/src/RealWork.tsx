@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { listarIncidenciasReales, type IncidenciaReal } from "./api"
-import RealTicketList, { BannerIncidencias } from "./RealTicketList"
-import { Icon } from "./RealUI"
+import RealTicketList from "./RealTicketList"
+import { BannerInstitucional, Icon } from "./RealUI"
 
 export default function RealWork({ token, abrirDetalle }: { token: string; abrirDetalle: (t: IncidenciaReal) => void }) {
   const [incidencias, setIncidencias] = useState<IncidenciaReal[]>([])
@@ -18,7 +18,7 @@ export default function RealWork({ token, abrirDetalle }: { token: string; abrir
     return () => { vigente = false }
   }, [token, recarga])
   return <div className="incident-directory incident-work">
-    <BannerIncidencias titulo="Mis atenciones" descripcion="Gestiona y documenta la atención de tus incidencias asignadas." />
+    <BannerInstitucional icono="login-headset" titulo="Mis atenciones" descripcion="Gestiona y documenta la atención de tus incidencias asignadas." />
     {error && <p role="alert" className="auth-error">{error}</p>}
     <RealTicketList vistaCompleta={{ modo: "atenciones" }} titulo="Incidencias asignadas a mí" tituloVacio="No tienes incidencias asignadas"
       descripcion="Últimos 50 registros con asignación activa propia" incidencias={incidencias} cargando={cargando} disponible={disponible} abrirDetalle={abrirDetalle}

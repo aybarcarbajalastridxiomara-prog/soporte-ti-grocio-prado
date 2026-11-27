@@ -1,8 +1,8 @@
 import { useState, type CSSProperties } from "react"
 import type { IncidenciaReal, PerfilReal, ResumenReal } from "./api"
 import type { VistaReal } from "./RealApp"
-import { Icon } from "./RealUI"
-import RealTicketList, { BannerIncidencias } from "./RealTicketList"
+import { BannerInstitucional, Icon } from "./RealUI"
+import RealTicketList from "./RealTicketList"
 
 type Props = {
   vista: VistaReal; perfil: PerfilReal; incidencias: IncidenciaReal[]; resumen: ResumenReal | null
@@ -86,7 +86,7 @@ export default function RealDashboard({ vista, perfil, incidencias, resumen, car
   </div>
 
   if (vista !== "dashboard") return <div className="incident-directory">
-    <BannerIncidencias titulo={representante ? "Incidencias de mi área" : "Listado de incidencias"}
+    <BannerInstitucional icono="login-ticket" titulo={representante ? "Incidencias de mi área" : "Listado de incidencias"}
       descripcion={representante ? "Consulta y da seguimiento a las solicitudes registradas en tu área." : "Consulta, filtra y da seguimiento a las incidencias registradas."} />
     <RealTicketList vistaCompleta={{ modo: "incidencias", rol: perfil.rol, usuarioId: perfil.id }} incidencias={incidencias} cargando={cargando} disponible={Boolean(actualizado)} actualizado={actualizado} titulo="Incidencias registradas" accion={acciones} abrirDetalle={abrirDetalle} />
   </div>
@@ -166,10 +166,7 @@ export default function RealDashboard({ vista, perfil, incidencias, resumen, car
   const campo = (nombre: keyof typeof filtrosIniciales, valor: string) => setBorrador(actual => ({ ...actual, [nombre]: valor }))
 
   return <div className="real-main-dashboard">
-    <section className="real-shell-greeting">
-      <div><h2>¡Hola, {perfil.nombre_completo}!</h2><p>{textosRol[perfil.rol]}</p></div>
-      <div className="real-dashboard-banner-art" aria-hidden="true"><span className="real-access-laptop"><Icon name="login-headset" /></span></div>
-    </section>
+    <BannerInstitucional icono="dashboard" titulo={`¡Hola, ${perfil.nombre_completo}!`} descripcion={textosRol[perfil.rol]} />
     <div className="kpis four" aria-label="Indicadores generales">
       {tarjetas.map(t => <article className="kpi" key={t.etiqueta}><span className={`kpi-icon ${t.color}`}><Icon name={t.icono} /></span><div><b>{t.numero ?? "—"}</b><p>{t.etiqueta}</p></div></article>)}
     </div>

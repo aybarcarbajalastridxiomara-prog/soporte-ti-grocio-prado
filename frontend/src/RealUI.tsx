@@ -42,3 +42,10 @@ export function Badge({ children }: { children: string }) {
   const color = ["Cerrado", "Habilitado", "Activa"].includes(children) ? "green" : children === "Pendiente" ? "amber" : children === "Alta" ? "red" : children === "En revisión" || children === "Media" ? "blue" : "slate"
   return <span className={`badge ${color}`}>{children}</span>
 }
+
+export function BannerInstitucional({ titulo, descripcion, icono }: { titulo: string; descripcion: string; icono: string }) {
+  return <section className="real-shell-greeting incident-hero">
+    <div><h2>{titulo}</h2><p>{descripcion}</p></div>
+    <div className="real-dashboard-banner-art" aria-hidden="true"><span className="banner-topic-icon"><Icon name={icono} /></span></div>
+  </section>
+}
