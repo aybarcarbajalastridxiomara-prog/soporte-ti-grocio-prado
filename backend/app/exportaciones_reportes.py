@@ -166,8 +166,8 @@ def generar_excel(datos: dict) -> bytes:
         barras.type = "bar"
         barras.title = "Incidencias por responsable" if len(responsables) <= len(principales) else "Incidencias por responsable · 5 principales"
         barras.legend = None
-        barras.y_axis.scaling.orientation = "maxMin"
-        barras.x_axis.scaling.min = 0
+        barras.x_axis.scaling.orientation = "maxMin"
+        barras.y_axis.scaling.min = 0
         datos_grafico(barras, 16, len(principales))
         barras.series[0].graphicalProperties.solidFill = "2778C4"
         barras.dataLabels = DataLabelList(showVal=True, dLblPos="outEnd")
