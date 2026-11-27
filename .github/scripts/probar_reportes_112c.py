@@ -82,7 +82,9 @@ class ReportesPostgres(fixture.FuncionesV3):
         xlsx = self.archivo()
         self.assertEqual(xlsx.status_code, 200, xlsx.text[:200] if xlsx.status_code != 200 else "")
         libro = load_workbook(BytesIO(xlsx.content))
-        self.assertEqual(libro["Incidencias"].max_row, 238)
+        self.assertEqual(libro["Incidencias"].max_row, 237 + 7)
+        self.assertEqual(libro["Incidencias"].freeze_panes, "A8")
+        self.assertEqual(libro["Incidencias"].auto_filter.ref, "A7:H244")
         libro.close()
 
     def test_reportes_filtros_combinados_prioridad_oficial_null_y_legados(self):
@@ -110,8 +112,8 @@ class ReportesPostgres(fixture.FuncionesV3):
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(r.json()["resumen"]["total"], 2)
         libro = load_workbook(BytesIO(self.archivo(desde="2026-11-18", hasta="2026-11-18").content))
-        self.assertEqual(libro["Incidencias"]["D2"].value.day, 18)
-        self.assertEqual(libro["Incidencias"]["D3"].value.hour, 0)
+        self.assertEqual(libro["Incidencias"]["E8"].value.day, 18)
+        self.assertEqual(libro["Incidencias"]["E9"].value.hour, 0)
         libro.close()
 
     def test_reportes_validacion_y_errores_no_producen_archivos(self):
@@ -146,15 +148,18 @@ class ReportesPostgres(fixture.FuncionesV3):
             if formato == "pdf":
                 lector = PdfReader(BytesIO(r.content))
                 texto = "\n".join(p.extract_text() for p in lector.pages)
-                self.assertIn(MUNICIPALIDAD, texto)
+                self.assertIn(MUNICIPALIDAD.upper(), texto)
                 self.assertIn("No existen incidencias", texto)
-                self.assertIn("Total: 0", texto)
-                self.assertIn("America/Lima", texto)
+                self.assertRegex(texto, r"\b0\s+Registradas\b")
+                self.assertIn("(Lima)", texto)
             else:
                 libro = load_workbook(BytesIO(r.content))
-                self.assertEqual(libro["Incidencias"].max_row, 1)
-                self.assertEqual(libro["Resumen"]["B7"].value, 0)
-                self.assertEqual(libro["Filtros"]["A2"].value, "Fecha de registro")
+                self.assertEqual(libro.sheetnames, ["Resumen", "Filtros", "Incidencias"])
+                self.assertEqual(libro["Incidencias"].max_row, 7)
+                self.assertEqual([c.value for c in libro["Incidencias"][7]],
+                    ["N.º", "Código", "Asunto", "Área municipal", "Fecha de registro", "Prioridad oficial", "Estado", "Responsable"])
+                self.assertEqual(libro["Resumen"]["A8"].value, 0)
+                self.assertEqual(libro["Filtros"]["A8"].value, "Fecha de registro")
                 libro.close()
 
     def test_reportes_responsables_historicos_inhabilitados_y_sin_duplicaciones(self):
@@ -204,7 +209,7 @@ class ReportesPostgres(fixture.FuncionesV3):
             self.assertLess(len(r.content), 4_000_000)
             if formato == "xlsx":
                 libro = load_workbook(BytesIO(r.content), read_only=True)
-                self.assertEqual(libro["Incidencias"].max_row, MAX_FILAS_EXPORTACION + 1)
+                self.assertEqual(libro["Incidencias"].max_row, MAX_FILAS_EXPORTACION + 7)
                 libro.close()
             else:
                 lector = PdfReader(BytesIO(r.content))
@@ -233,9 +238,9 @@ class ReportesPostgres(fixture.FuncionesV3):
         self.assertEqual(self.prioridad(id_, "ASISTENTE").status_code, 201)
         xlsx = self.archivo()
         libro = load_workbook(BytesIO(xlsx.content))
-        asuntos = [libro["Incidencias"].cell(i, 2) for i in range(2, 4)]
+        asuntos = [libro["Incidencias"].cell(i, 3) for i in range(8, 10)]
         self.assertTrue(all(c.data_type == "s" and c.hyperlink is None for c in asuntos))
-        valores = [libro["Incidencias"].cell(i, 5).value for i in range(2, 4)]
+        valores = [libro["Incidencias"].cell(i, 6).value for i in range(8, 10)]
         self.assertTrue(any("provisional: Alta" in v for v in valores))
         libro.close()
 
