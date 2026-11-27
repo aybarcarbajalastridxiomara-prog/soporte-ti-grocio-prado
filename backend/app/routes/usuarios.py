@@ -82,7 +82,7 @@ class PerfilAdministrado(MiPerfil):
 
 class AccionAdministrativa(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    accion: Literal["habilitar", "deshabilitar", "archivar", "restaurar", "eliminar", "reenviar", "recuperar"]
+    accion: Literal["habilitar", "deshabilitar", "archivar", "restaurar", "restaurar_habilitado", "eliminar", "reenviar", "recuperar"]
 
 
 class PerfilActualizar(BaseModel):
@@ -492,7 +492,7 @@ def administrar_usuario(
         return reenviar_acceso(db, jefe, usuario, accion)
     if usuario_id == jefe.id:
         raise HTTPException(409, "No puedes cambiar el acceso ni retirar tu propio perfil.")
-    if archivado != (accion in ("restaurar", "eliminar")):
+    if archivado != (accion in ("restaurar", "restaurar_habilitado", "eliminar")):
         raise HTTPException(409, "La acción no corresponde al estado del perfil. Actualiza el directorio.")
     if accion in ("habilitar", "deshabilitar") and usuario.habilitado == (accion == "habilitar"):
         raise HTTPException(409, "El perfil ya se encuentra en ese estado.")
@@ -506,12 +506,13 @@ def administrar_usuario(
                        {"jefe": jefe.id, "id": usuario_id})
         else:
             anterior = {**datos_auditables(usuario), "archivado": archivado}
-            habilitado_nuevo = accion == "habilitar"
+            habilitado_nuevo = accion in ("habilitar", "restaurar_habilitado")
             archivado_nuevo = accion == "archivar"
             db.execute(text("UPDATE public.usuarios SET archivado = :archivado, habilitado = :habilitado WHERE id = :id"),
                        {"archivado": archivado_nuevo, "habilitado": habilitado_nuevo, "id": usuario_id})
             db.add(AuditoriaAdministrativa(
-                actor_id=jefe.id, usuario_id=usuario_id, accion=f"{accion.upper()}_PERFIL",
+                actor_id=jefe.id, usuario_id=usuario_id,
+                accion="RESTAURAR_PERFIL" if accion == "restaurar_habilitado" else f"{accion.upper()}_PERFIL",
                 anterior=anterior, nuevo={**anterior, "habilitado": habilitado_nuevo, "archivado": archivado_nuevo},
             ))
         db.commit()
@@ -526,5 +527,6 @@ def administrar_usuario(
     return {"mensaje": {
         "habilitar": "Perfil habilitado.", "deshabilitar": "Perfil deshabilitado.",
         "archivar": "Perfil archivado.", "restaurar": "Perfil restaurado. Su acceso sigue deshabilitado.",
+        "restaurar_habilitado": "Perfil restaurado y habilitado.",
         "eliminar": "Perfil y cuenta eliminados.",
     }[accion]}

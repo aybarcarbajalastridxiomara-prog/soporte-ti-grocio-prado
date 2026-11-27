@@ -4,13 +4,13 @@ import unittest
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 os.environ["DATABASE_URL"] = ""
 os.environ["SUPABASE_URL"] = ""
 
 from fastapi.testclient import TestClient
-from sqlalchemy import MetaData, create_engine
+from sqlalchemy import MetaData, create_engine, event, text
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -150,6 +150,27 @@ class Preentrega111A(unittest.TestCase):
         self.assertEqual(self.client.post(ruta, json={"accion": "archivar"}).status_code, 503)
         self.actor = "ASISTENTE"
         self.assertEqual(self.client.post(ruta, json={"accion": "eliminar"}).status_code, 403)
+
+    def test_restaurar_y_habilitar_devuelve_acceso_y_registra_auditoria(self):
+        tecnico = self.ids["ASISTENTE"]
+        with self.engine.begin() as conexion:
+            conexion.execute(text("ALTER TABLE usuarios ADD COLUMN archivado BOOLEAN NOT NULL DEFAULT FALSE"))
+            conexion.execute(text("UPDATE usuarios SET archivado = TRUE, habilitado = FALSE WHERE usuario = 'asistente'"))
+
+        @event.listens_for(self.engine, "before_cursor_execute", retval=True)
+        def adaptar_esquema(_conexion, _cursor, sentencia, parametros, _contexto, _ejecutar_varios):
+            if "public.usuarios" in sentencia:
+                sentencia = sentencia.replace("public.usuarios", "usuarios")
+                parametros = tuple(valor.hex if isinstance(valor, UUID) else valor for valor in parametros)
+            return sentencia, parametros
+
+        with patch("app.routes.usuarios.gestion_ampliada_disponible", return_value=True):
+            respuesta = self.client.post(f"/api/usuarios/{tecnico}/acciones", json={"accion": "restaurar_habilitado"})
+        self.assertEqual(respuesta.status_code, 200, respuesta.text)
+        registro = self.client.get("/api/administracion/historial").json()[0]
+        self.assertEqual(registro["accion"], "RESTAURAR_PERFIL")
+        self.assertTrue(registro["nuevo"]["habilitado"])
+        self.assertFalse(registro["nuevo"]["archivado"])
 
     def test_reenvio_reutiliza_correo_y_limita_intentos_tras_error(self):
         tecnico = self.ids["ASISTENTE"]

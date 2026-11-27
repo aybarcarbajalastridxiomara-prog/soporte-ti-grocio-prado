@@ -6,22 +6,23 @@ type Area = { id: string; nombre: string; activo: boolean }
 type Configuracion = { permisos_verificados?: boolean; edicion_habilitada: boolean; invitaciones_habilitadas: boolean; gestion_ampliada?: boolean; motivos: string[] }
 type Persona = PerfilReal & { archivado?: boolean; correo?: string | null; activacion?: "ACTIVADA" | "PENDIENTE" | "DESCONOCIDA" }
 const acciones = {
-  reenviar: "Reenviar invitación", recuperar: "Enviar recuperación de contraseña",
+  reenviar: "Reenviar invitación de activación", recuperar: "Enviar recuperación de contraseña",
   habilitar: "Rehabilitar usuario", deshabilitar: "Deshabilitar usuario", archivar: "Archivar usuario",
-  restaurar: "Restaurar usuario", eliminar: "Eliminar definitivamente",
+  restaurar: "Restaurar sin habilitar", restaurar_habilitado: "Restaurar y habilitar", eliminar: "Eliminar definitivamente",
 }
 type Accion = keyof typeof acciones
 const iconosAccion: Record<Accion, string> = {
   reenviar: "login-mail", recuperar: "login-mail", habilitar: "user-add",
-  deshabilitar: "login-lock", archivar: "archive", restaurar: "refresh", eliminar: "trash",
+  deshabilitar: "login-lock", archivar: "archive", restaurar: "refresh", restaurar_habilitado: "user-add", eliminar: "trash",
 }
 const advertencias: Record<Accion, string> = {
   reenviar: "Se enviará un nuevo enlace al correo registrado.",
   recuperar: "Se enviará un enlace de recuperación al correo registrado.",
   habilitar: "Se permitirá el acceso al sistema según el rol actual.",
   deshabilitar: "Se bloqueará su acceso y dejará de estar disponible para nuevas asignaciones.",
-  archivar: "Se retirará su acceso y se ocultará del directorio predeterminado. El historial se conserva.",
+  archivar: "Se retirará su acceso y el perfil quedará en el filtro Archivado. El historial se conserva.",
   restaurar: "El perfil volverá al directorio y su acceso seguirá deshabilitado.",
+  restaurar_habilitado: "El perfil volverá al directorio con el acceso habilitado. Si la cuenta está pendiente, el usuario aún debe completar la activación.",
   eliminar: "Se eliminarán la cuenta de Auth y el perfil si carecen de dependencias históricas. Esta acción es irreversible.",
 }
 const roles: Rol[] = ["JEFE", "ASISTENTE", "PRACTICANTE", "REPRESENTANTE"]
@@ -60,7 +61,7 @@ function MenuPerfil({ persona, propio, configuracion, abrir, pedirAccion }: {
       const panel = menu.current
       if (!panel || panel.matches(":popover-open")) return
       const ancla = evento.currentTarget.getBoundingClientRect()
-      const alto = (1 + Number(editar) + Number(mostrarEnlace) + (administrar ? (persona.archivado ? 2 : 3) : 0)) * 35 + (administrar ? 40 : 14)
+      const alto = (1 + Number(editar) + Number(mostrarEnlace) + (administrar ? 3 : 0)) * 35 + (administrar ? (persona.archivado ? 56 : 76) : 14)
       const espacioAbajo = window.innerHeight - ancla.bottom - 10
       const arriba = espacioAbajo < alto && ancla.top - 10 > espacioAbajo
       panel.style.left = `${Math.max(8, Math.min(ancla.right - 236, window.innerWidth - 244))}px`
@@ -77,13 +78,17 @@ function MenuPerfil({ persona, propio, configuracion, abrir, pedirAccion }: {
       </div>
       {administrar && <>
         <div className="admin-menu-group">
-          {persona.archivado ? opcion("restaurar", ampliada ? undefined : requiereMigracion) : <>
+          {persona.archivado ? <>
+            {opcion("restaurar_habilitado", ampliada ? undefined : requiereMigracion)}
+            {opcion("restaurar", ampliada ? undefined : requiereMigracion)}
+          </> : <>
             {opcion(persona.habilitado ? "deshabilitar" : "habilitar")}
             {opcion("archivar", ampliada ? undefined : requiereMigracion)}
           </>}
         </div>
         <div className="admin-menu-group">
           {opcion("eliminar", !ampliada ? requiereMigracion : !persona.archivado ? "Archiva primero este perfil." : undefined)}
+          {ampliada && !persona.archivado && <small className="admin-menu-note">Primero archiva el perfil para poder eliminarlo.</small>}
         </div>
       </>}
     </div>
@@ -216,6 +221,9 @@ export default function RealAdministration({ token, perfil }: { token: string; p
         method: "POST", body: JSON.stringify({ accion: confirmacion.accion }),
       })
       setConfirmacion(null); setMensaje(resultado.mensaje); setRecarga(x => x + 1)
+      if (confirmacion.accion === "restaurar" || confirmacion.accion === "restaurar_habilitado") {
+        setFiltroEstado(""); setPagina(1)
+      }
     } catch (fallo) { setError(mensajeError(fallo)) }
     finally { setGuardando(false) }
   }
