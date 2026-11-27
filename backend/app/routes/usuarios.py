@@ -2,6 +2,9 @@
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 from uuid import UUID
+from uuid import uuid4
+import hashlib
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
@@ -13,7 +16,8 @@ from app.auth import get_current_user, require_roles
 from app.config import get_settings
 from app.db import get_db
 from app.models import Area, Asignacion, Usuario, AuditoriaAdministrativa
-from app.supabase_admin import consultar_correo_supabase, invitar_en_supabase, recuperar_en_supabase
+from app.supabase_admin import (consultar_correo_supabase, invitar_en_supabase,
+                               recuperar_en_supabase, identidad_pendiente, retorno_auth_verificado)
 
 
 router = APIRouter(
@@ -80,6 +84,7 @@ class PerfilAdministrado(MiPerfil):
     archivado: bool = False
     correo: str | None = None
     activacion: Literal["ACTIVADA", "PENDIENTE", "DESCONOCIDA"] = "DESCONOCIDA"
+    alta_controlada: bool = False
 
 
 class AccionAdministrativa(BaseModel):
@@ -109,17 +114,30 @@ class UsuarioInvitar(BaseModel):
     usuario: str = Field(min_length=3, max_length=80, pattern=r"^[a-z0-9][a-z0-9_.-]*$")
     area_id: UUID
     rol: RolInvitable
+    habilitado: StrictBool = True
+    solicitud_id: UUID = Field(default_factory=uuid4)
+
+
+class AltaPerfilRespuesta(MiPerfil):
+    estado_invitacion: Literal["ACEPTADA_POR_AUTH", "PENDIENTE_COMPROBAR"]
+    mensaje: str
 
 
 def estado_administracion() -> dict:
     settings = get_settings()
     motivos = []
-    if not settings.administracion_perfiles_habilitada:
+    alta_habilitada = (settings.administracion_perfiles_habilitada
+        if settings.invitaciones_usuarios_habilitadas is None else settings.invitaciones_usuarios_habilitadas)
+    if not alta_habilitada:
         motivos.append("La modificación de perfiles requiere habilitación y permisos PostgreSQL por el operador.")
     if not settings.supabase_url or not settings.supabase_service_role_key:
         motivos.append("Falta la credencial privada de administración de Supabase en el servidor.")
     if not settings.supabase_smtp_configurado:
         motivos.append("El operador debe configurar y comprobar el correo SMTP de Supabase Auth.")
+    try:
+        retorno_auth_verificado(settings)
+    except HTTPException:
+        motivos.append("El operador debe verificar FRONTEND_URL y su retorno HTTPS autorizado en Supabase Auth.")
     return {
         "edicion_habilitada": settings.administracion_perfiles_habilitada,
         "invitaciones_habilitadas": not motivos,
@@ -127,7 +145,7 @@ def estado_administracion() -> dict:
     }
 
 
-def permisos_administrativos_verificados(db: Session) -> bool:
+def permisos_administrativos_verificados(db: Session, *, solo_alta: bool = False) -> bool:
     """Comprobación conservadora de lectura; nunca aplica GRANT ni cambia RLS."""
     if db.get_bind().dialect.name != "postgresql":
         return False
@@ -140,14 +158,15 @@ def permisos_administrativos_verificados(db: Session) -> bool:
           AND has_table_privilege(current_user,to_regclass('public.auditoria_administrativa'),'SELECT')
           AND has_table_privilege(current_user,to_regclass('public.auditoria_administrativa'),'INSERT')
           AND has_any_column_privilege(current_user,'public.areas','UPDATE')
+          AND has_any_column_privilege(current_user,'public.usuarios','UPDATE')
           AND NOT EXISTS (
             SELECT 1 FROM (VALUES ('id'),('area_id'),('nombre_completo'),('usuario'),('rol'),('habilitado')) c(nombre)
             WHERE NOT has_column_privilege(current_user,'public.usuarios',c.nombre,'INSERT')
           )
-          AND NOT EXISTS (
+          AND (:solo_alta OR NOT EXISTS (
             SELECT 1 FROM (VALUES ('area_id'),('nombre_completo'),('usuario'),('rol'),('habilitado')) c(nombre)
             WHERE NOT has_column_privilege(current_user,'public.usuarios',c.nombre,'UPDATE')
-          )
+          ))
           AND (SELECT count(*)=2 AND bool_and(relrowsecurity) FROM pg_class
                WHERE oid IN ('public.usuarios'::regclass,'public.areas'::regclass))
           AND EXISTS (
@@ -169,7 +188,7 @@ def permisos_administrativos_verificados(db: Session) -> bool:
           )
           AND NOT EXISTS (
             SELECT 1 FROM (VALUES ('usuarios','SELECT'),('usuarios','INSERT'),('usuarios','UPDATE'),('areas','SELECT'),('areas','UPDATE')) req(tabla,operacion)
-            WHERE NOT EXISTS (
+            WHERE NOT (:solo_alta AND req.tabla='usuarios' AND req.operacion='UPDATE') AND NOT EXISTS (
               SELECT 1 FROM pg_policies p WHERE p.schemaname='public' AND p.tablename=req.tabla
                 AND p.cmd IN (req.operacion,'ALL') AND 'soporte_ti_api'::name=ANY(p.roles)
                 AND p.permissive='PERMISSIVE'
@@ -177,7 +196,11 @@ def permisos_administrativos_verificados(db: Session) -> bool:
                 AND (req.operacion='SELECT' OR COALESCE(p.with_check,p.qual)='true')
             )
           )
-    """)).scalar_one())
+    """), {"solo_alta": solo_alta}).scalar_one())
+
+
+def permisos_alta_verificados(db: Session) -> bool:
+    return permisos_administrativos_verificados(db, solo_alta=True)
 
 
 def gestion_ampliada_disponible(db: Session) -> bool:
@@ -215,6 +238,16 @@ def consultar_configuracion_administrativa(
     configuracion["permisos_verificados"] = verificados
     configuracion["edicion_habilitada"] = configuracion["edicion_habilitada"] and verificados
     configuracion["invitaciones_habilitadas"] = configuracion["invitaciones_habilitadas"] and verificados
+    alta_verificada = False
+    if estado_administracion()["invitaciones_habilitadas"]:
+        try:
+            alta_verificada = permisos_alta_verificados(db)
+        except SQLAlchemyError:
+            db.rollback()
+        if not alta_verificada:
+            configuracion["motivos"].append("El alta requiere permisos PostgreSQL, RLS, cupo y auditoría verificados.")
+    configuracion["permisos_alta_verificados"] = alta_verificada
+    configuracion["invitaciones_habilitadas"] = estado_administracion()["invitaciones_habilitadas"] and alta_verificada
     configuracion["gestion_ampliada"] = gestion_ampliada_disponible(db)
     return configuracion
 
@@ -238,6 +271,17 @@ def listar_usuarios(
                     perfil.activacion = "ACTIVADA"
                 elif cuenta["correo"]:
                     perfil.activacion = "PENDIENTE"
+    # La auditoría identifica únicamente las altas de este flujo. No presupone
+    # confirmación del correo ni habilita eliminación/edición de perfiles.
+    if get_settings().supabase_service_role_key:
+        try:
+            propias = set(db.scalars(select(AuditoriaAdministrativa.usuario_id).where(
+                AuditoriaAdministrativa.accion == "INVITAR_PERFIL",
+                AuditoriaAdministrativa.nuevo["etapa"].as_string() == "PERFIL_CREADO")))
+            for perfil in perfiles:
+                perfil.alta_controlada = perfil.id in propias
+        except SQLAlchemyError:
+            db.rollback()
     return perfiles
 
 
@@ -373,7 +417,7 @@ def actualizar_usuario(
         raise HTTPException(503, "No se pudo guardar el perfil. Revisa los permisos de administración PostgreSQL.") from None
 
 
-@router.post("/usuarios/invitar", status_code=201, response_model=MiPerfil)
+@router.post("/usuarios/invitar", status_code=201, response_model=AltaPerfilRespuesta)
 def invitar_usuario(
     datos: UsuarioInvitar,
     jefe: Usuario = Depends(require_roles("JEFE")),
@@ -382,8 +426,40 @@ def invitar_usuario(
     configuracion = estado_administracion()
     if not configuracion["invitaciones_habilitadas"]:
         raise HTTPException(503, " ".join(configuracion["motivos"]))
-    comprobar_escritura(db)
+    if not permisos_alta_verificados(db):
+        raise HTTPException(503, "Alta bloqueada: valida permisos, RLS, cupo y auditoría PostgreSQL.")
     bloquear_jefes(db, jefe)
+    contenido = datos.model_dump(mode="json", exclude={"solicitud_id"})
+    contenido["correo"] = datos.correo.casefold()
+    huella = hashlib.sha256(json.dumps(contenido, sort_keys=True, ensure_ascii=True).encode()).hexdigest()
+    reserva = db.get(AuditoriaAdministrativa, datos.solicitud_id)
+
+    def respuesta_perfil(usuario, aceptada=False):
+        return AltaPerfilRespuesta(**MiPerfil.model_validate(usuario).model_dump(),
+            estado_invitacion="ACEPTADA_POR_AUTH" if aceptada else "PENDIENTE_COMPROBAR",
+            mensaje=("Perfil guardado. Auth aceptó la invitación; la recepción y activación deben confirmarse con el destinatario."
+                     if aceptada else "Perfil guardado. El envío no está confirmado; comprueba el correo y usa el reenvío controlado del directorio."))
+
+    def respuesta_existente():
+        etapas = db.scalars(select(AuditoriaAdministrativa).where(
+            AuditoriaAdministrativa.accion == "INVITAR_PERFIL",
+            AuditoriaAdministrativa.nuevo["solicitud_id"].as_string() == str(datos.solicitud_id),
+        ).order_by(AuditoriaAdministrativa.fecha_registro, AuditoriaAdministrativa.id)).all()
+        creada = next((e for e in etapas if e.nuevo.get("etapa") == "PERFIL_CREADO"), None)
+        if creada:
+            usuario = db.get(Usuario, creada.usuario_id)
+            if usuario is None:
+                raise HTTPException(409, "El perfil cambió. El operador debe conciliar la solicitud.")
+            return respuesta_perfil(usuario, any(e.nuevo.get("etapa") == "ENVIO_ACEPTADO" for e in etapas))
+        return None
+
+    if reserva is not None:
+        if (reserva.accion != "INVITAR_PERFIL" or reserva.actor_id != jefe.id
+                or reserva.nuevo.get("huella") != huella):
+            raise HTTPException(409, "La solicitud ya existe con otros datos. No se modificó ningún perfil.")
+        existente = respuesta_existente()
+        if existente is not None:
+            return existente
     area = validar_area(db, datos.area_id)
     if datos.rol in {"ASISTENTE", "PRACTICANTE"} and area.nombre != AREA_INFORMATICA:
         raise HTTPException(422, "Asistentes y practicantes deben pertenecer a la Unidad de Racionalización e Informática.")
@@ -395,27 +471,96 @@ def invitar_usuario(
         for fila in directorio_auth(db, jefe)
     ):
         raise HTTPException(409, "Ese correo ya tiene un perfil. Usa las acciones del directorio.")
-    # Auth valida la unicidad del correo y realiza el envío por su SMTP.
-    invitado = invitar_en_supabase(datos.correo)
-    try:
-        identidad = UUID(invitado["id"])
-    except (KeyError, ValueError, TypeError):
-        raise HTTPException(502, "Supabase no confirmó una identidad válida. Consulta el estado antes de reintentar.") from None
+    if reserva is None:
+        db.add(AuditoriaAdministrativa(id=datos.solicitud_id, actor_id=jefe.id, usuario_id=jefe.id,
+            accion="INVITAR_PERFIL", anterior={}, nuevo={"etapa": "RESERVADA", "huella": huella,
+                                                        "solicitud_id": str(datos.solicitud_id)}))
+        db.commit()  # Nada se envía antes de disponer de una reserva durable.
+        bloquear_jefes(db, jefe)
+        # Otro proceso pudo completar ESTA solicitud al liberarse el bloqueo.
+        existente = respuesta_existente()
+        if existente is not None:
+            return existente
+        area = validar_area(db, datos.area_id)
+        if datos.rol in {"ASISTENTE", "PRACTICANTE"} and area.nombre != AREA_INFORMATICA:
+            raise HTTPException(409, "El área cambió. No se creó ninguna identidad.")
+        validar_cupo_antes_de_invitar(db, datos)
+    identidad = identidad_pendiente(datos.correo, datos.solicitud_id, huella)
     if db.get(Usuario, identidad) is not None:
         raise HTTPException(409, "La cuenta ya tiene un perfil. Usa la edición de usuarios; no se han cambiado sus permisos.")
     try:
-        usuario = Usuario(id=identidad, **datos.model_dump(exclude={"correo"}), habilitado=True)
+        usuario = Usuario(id=identidad, **datos.model_dump(exclude={"correo", "solicitud_id"}))
         db.add(usuario)
         db.flush()
-        respuesta = MiPerfil.model_validate(usuario)
-        db.add(AuditoriaAdministrativa(actor_id=jefe.id, usuario_id=usuario.id, accion="INVITAR_PERFIL", anterior={}, nuevo=datos_auditables(usuario)))
+        db.add(AuditoriaAdministrativa(actor_id=jefe.id, usuario_id=usuario.id, accion="INVITAR_PERFIL", anterior={},
+            nuevo={**datos_auditables(usuario), "etapa": "PERFIL_CREADO", "solicitud_id": str(datos.solicitud_id)}))
+        db.add(AuditoriaAdministrativa(actor_id=jefe.id, usuario_id=usuario.id, accion="INVITAR_PERFIL", anterior={},
+            nuevo={"etapa": "ENVIO_SOLICITADO", "solicitud_id": str(datos.solicitud_id)}))
         db.commit()
-        return respuesta
     except SQLAlchemyError:
         db.rollback()
-        # La operación externa no forma parte de la transacción PostgreSQL.
-        # La cuenta sin perfil continúa sin acceso por get_current_user.
-        raise HTTPException(503, "Supabase aceptó la invitación, pero no se guardó el perfil. La cuenta no tiene acceso nuevo; el operador debe reconciliarla antes de reintentar.") from None
+        raise HTTPException(503, "Auth creó una identidad pendiente, sin enviar correo. No se guardó el perfil. Reintenta la misma solicitud para conciliarla sin duplicados.") from None
+    aceptada = False
+    try:
+        invitado = invitar_en_supabase(datos.correo)
+        aceptada = UUID(invitado["id"]) == identidad
+    except (HTTPException, KeyError, ValueError, TypeError):
+        pass  # El perfil ya existe; nunca comunicar un falso fallo de creación.
+    try:
+        db.add(AuditoriaAdministrativa(actor_id=jefe.id, usuario_id=identidad, accion="INVITAR_PERFIL", anterior={},
+            nuevo={"etapa": "ENVIO_ACEPTADO" if aceptada else "ENVIO_NO_CONFIRMADO", "solicitud_id": str(datos.solicitud_id)}))
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        aceptada = False  # No repetir automáticamente un correo de resultado incierto.
+    return respuesta_perfil(usuario, aceptada)
+
+
+class ReenvioInvitacion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    solicitud_id: UUID = Field(default_factory=uuid4)
+
+
+@router.post("/usuarios/{usuario_id}/invitacion/reenviar")
+def reenviar_alta_controlada(usuario_id: UUID, datos: ReenvioInvitacion,
+        jefe: Usuario = Depends(require_roles("JEFE")), db: Session = Depends(get_db)):
+    if not estado_administracion()["invitaciones_habilitadas"] or not permisos_alta_verificados(db):
+        raise HTTPException(503, "El reenvío requiere configuración y permisos de alta verificados.")
+    usuario = bloquear_perfil(db, jefe, usuario_id)
+    if not usuario.habilitado:
+        raise HTTPException(409, "El perfil no está habilitado. No se envió ningún correo.")
+    creada = db.scalar(select(AuditoriaAdministrativa).where(
+        AuditoriaAdministrativa.usuario_id == usuario_id,
+        AuditoriaAdministrativa.accion == "INVITAR_PERFIL",
+        AuditoriaAdministrativa.nuevo["etapa"].as_string() == "PERFIL_CREADO",
+    ).limit(1))
+    if creada is None:
+        raise HTTPException(409, "La cuenta no procede de este flujo de alta. Usa su procedimiento de acceso existente.")
+    reserva = db.get(AuditoriaAdministrativa, datos.solicitud_id)
+    if reserva:
+        if reserva.actor_id != jefe.id or reserva.usuario_id != usuario_id or reserva.nuevo.get("etapa") != "REENVIO_SOLICITADO":
+            raise HTTPException(409, "La solicitud ya está registrada para otra operación.")
+        return {"mensaje": "Este reenvío ya fue solicitado. Comprueba su recepción antes de solicitar otro."}
+    ahora = datetime.now(timezone.utc)
+    intentos = db.scalars(select(AuditoriaAdministrativa.fecha_registro).where(
+        AuditoriaAdministrativa.usuario_id == usuario_id,
+        AuditoriaAdministrativa.accion == "INVITAR_PERFIL",
+        AuditoriaAdministrativa.nuevo["etapa"].as_string().in_(("ENVIO_SOLICITADO", "REENVIO_SOLICITADO")),
+        AuditoriaAdministrativa.fecha_registro > ahora - timedelta(hours=1),
+    )).all()
+    # SQLite de pruebas entrega fechas naive; en PostgreSQL son TIMESTAMPTZ.
+    if len(intentos) >= 3 or any(f.replace(tzinfo=f.tzinfo or timezone.utc) > ahora - timedelta(seconds=60) for f in intentos):
+        raise HTTPException(429, "Espera 60 segundos entre envíos. Máximo tres por hora.")
+    correo = consultar_correo_supabase(usuario_id)
+    if not correo:
+        raise HTTPException(409, "La identidad no tiene correo disponible.")
+    db.add(AuditoriaAdministrativa(id=datos.solicitud_id, actor_id=jefe.id, usuario_id=usuario_id,
+        accion="INVITAR_PERFIL", anterior={}, nuevo={"etapa": "REENVIO_SOLICITADO"}))
+    db.commit()  # Persistir límite antes de cualquier solicitud externa.
+    respuesta = invitar_en_supabase(correo)
+    if respuesta.get("id") != str(usuario_id):
+        raise HTTPException(502, "Auth no confirmó el reenvío a la identidad esperada.")
+    return {"mensaje": "Auth aceptó el reenvío. Confirma la recepción con el destinatario."}
 
 
 def reenviar_acceso(db: Session, jefe: Usuario, usuario: Usuario, accion: str) -> dict:

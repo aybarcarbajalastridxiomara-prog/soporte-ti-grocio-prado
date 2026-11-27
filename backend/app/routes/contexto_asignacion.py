@@ -31,6 +31,7 @@ class TecnicoDisponible(BaseModel):
 
 
 class TecnicoActivo(BaseModel):
+    asignacion_id: UUID
     id: UUID
     nombre_completo: str
     rol: str
@@ -46,6 +47,30 @@ class ContextoAsignacionRespuesta(BaseModel):
     tecnico_activo: TecnicoActivo | None
     puede_asignar: bool
     ruta_asignacion: str
+    puede_reasignar: bool = False
+    ruta_reasignacion: str
+    permisos_verificados: bool = False
+
+
+def permisos_asignacion_verificados(db: Session) -> bool:
+    """Metadatos de solo lectura. Los POST conservan autorización y RLS reales."""
+    if db.get_bind().dialect.name != "postgresql":
+        return False
+    return bool(db.scalar(text("""
+        SELECT current_user = 'soporte_ti_api'
+          AND NOT (SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user)
+          AND has_schema_privilege(current_user,'public','USAGE')
+          AND has_table_privilege(current_user,'public.usuarios','SELECT')
+          AND has_table_privilege(current_user,'public.incidencias','SELECT')
+          AND has_column_privilege(current_user,'public.incidencias','estado','UPDATE')
+          AND has_table_privilege(current_user,'public.asignaciones','SELECT')
+          AND has_table_privilege(current_user,'public.asignaciones','INSERT')
+          AND has_column_privilege(current_user,'public.asignaciones','fecha_fin','UPDATE')
+          AND has_table_privilege(current_user,'public.historial_incidencias','INSERT')
+          AND (SELECT count(*)=4 AND bool_and(relrowsecurity) FROM pg_class
+               WHERE oid IN ('public.usuarios'::regclass,'public.incidencias'::regclass,
+                             'public.asignaciones'::regclass,'public.historial_incidencias'::regclass))
+    """)))
 
 
 def requerir_jefe(usuario: Usuario) -> None:
@@ -54,6 +79,19 @@ def requerir_jefe(usuario: Usuario) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo el Jefe de Sistemas puede consultar asignaciones.",
         )
+
+
+def tecnico_asignable(db: Session, identidad: UUID) -> Usuario | None:
+    consulta = select(Usuario).where(Usuario.id == identidad, Usuario.habilitado.is_(True),
+                                     Usuario.rol.in_(("ASISTENTE", "PRACTICANTE")))
+    # FOR SHARE exige UPDATE incluso sin cambiar filas. El rol MVP solo puede
+    # leer perfiles y tampoco puede modificarlos desde la API. Si cuenta con
+    # administración, el bloqueo compartido serializa la retirada de acceso.
+    if db.get_bind().dialect.name == "postgresql" and db.scalar(text(
+        "SELECT has_any_column_privilege(current_user,'public.usuarios','UPDATE')"
+    )):
+        consulta = consulta.with_for_update(read=True)
+    return db.scalar(consulta.execution_options(populate_existing=True))
 
 
 @router.get(
@@ -114,6 +152,7 @@ def consultar_contexto_asignacion(
 
     actual = db.execute(
         select(
+            Asignacion.id.label("asignacion_id"),
             Asignacion.tecnico_id.label("id"),
             Usuario.nombre_completo,
             Usuario.rol,
@@ -159,4 +198,8 @@ def consultar_contexto_asignacion(
         tecnico_activo=tecnico_activo,
         puede_asignar=puede_asignar,
         ruta_asignacion=ruta,
+        puede_reasignar=tecnico_activo is not None and incidencia.estado == "En revisión",
+        ruta_reasignacion=(f"/api/v4/incidencias/{incidencia_id}/reasignar" if ciclo > 1
+                          else f"/api/asignaciones/{incidencia_id}/reasignar"),
+        permisos_verificados=permisos_asignacion_verificados(db),
     )

@@ -2,6 +2,7 @@
 """Asignacion segura de incidencias reabiertas en V4."""
 
 from uuid import UUID
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -14,6 +15,7 @@ from app.db import get_db
 from app.models import Usuario
 from app.v4_esquema import esquema_v4_disponible
 from app.routes.operaciones_ti import asignacion_activa, consultar_ticket, ciclo_actual, observacion_previa
+from app.routes.contexto_asignacion import tecnico_asignable
 
 
 router = APIRouter(
@@ -42,6 +44,70 @@ class TomaV4Crear(BaseModel):
 
 class TomaV4Respuesta(AsignacionV4Respuesta):
     origen_asignacion: str = "AUTOTOMA"
+
+
+class ReasignacionV4Crear(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    nuevo_tecnico_id: UUID
+    motivo: str = Field(min_length=5, max_length=500)
+    asignacion_actual_id: UUID
+    ciclo_actual: int = Field(gt=1)
+
+
+@router.post("/{incidencia_id}/reasignar", response_model=AsignacionV4Respuesta,
+             status_code=status.HTTP_201_CREATED)
+def reasignar_incidencia_reabierta(incidencia_id: UUID, datos: ReasignacionV4Crear,
+        usuario_actual: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Cambia solo el responsable del ciclo vigente; conserva asignaciones y cierres."""
+    if usuario_actual.rol != "JEFE":
+        raise HTTPException(403, "Solo el Jefe de Sistemas puede reasignar.")
+    try:
+        if not esquema_v4_disponible(db):
+            raise HTTPException(503, "Esquema V4 no habilitado.")
+        ticket = consultar_ticket(db, incidencia_id, usuario_actual, bloquear=True)
+        db.refresh(usuario_actual)
+        if not usuario_actual.habilitado or usuario_actual.rol != "JEFE":
+            raise HTTPException(403, "Jefatura sin autorización vigente.")
+        ciclo = ciclo_actual(db, incidencia_id, True)
+        if ciclo <= 1 or ciclo != datos.ciclo_actual or ticket.estado != "En revisión":
+            raise HTTPException(409, "El ciclo cambió o no admite reasignación. Actualiza la incidencia.")
+        if not observacion_previa(db, incidencia_id, ciclo):
+            raise HTTPException(409, "No existe observación que justifique el ciclo.")
+        anterior = db.execute(text("""SELECT id,tecnico_id,ciclo_atencion FROM public.asignaciones
+            WHERE incidencia_id=:id AND fecha_fin IS NULL FOR UPDATE"""),
+            {"id":incidencia_id}).mappings().one_or_none()
+        if (anterior is None or anterior["id"] != datos.asignacion_actual_id
+                or anterior["ciclo_atencion"] != ciclo):
+            raise HTTPException(409, "El responsable cambió. Actualiza antes de reasignar.")
+        if anterior["tecnico_id"] == datos.nuevo_tecnico_id:
+            raise HTTPException(409, "El técnico seleccionado ya es responsable.")
+        perfil_tecnico = tecnico_asignable(db, datos.nuevo_tecnico_id)
+        if perfil_tecnico is None:
+            raise HTTPException(422, "Seleccione un asistente o practicante habilitado.")
+        tecnico = perfil_tecnico.id
+        fecha = datetime.now(timezone.utc)
+        db.execute(text("UPDATE public.asignaciones SET fecha_fin=:fecha WHERE id=:anterior"),
+                   {"fecha":fecha,"anterior":anterior["id"]})
+        nueva = db.execute(text("""INSERT INTO public.asignaciones
+            (incidencia_id,tecnico_id,asignado_por_id,origen_asignacion,fecha_asignacion,motivo_reasignacion,ciclo_atencion)
+            VALUES (:id,:tecnico,:jefe,'JEFATURA',:fecha,:motivo,:ciclo) RETURNING id"""),
+            {"id":incidencia_id,"tecnico":tecnico,"jefe":usuario_actual.id,
+             "fecha":fecha,"motivo":datos.motivo,"ciclo":ciclo}).scalar_one()
+        db.execute(text("""INSERT INTO public.historial_incidencias
+            (incidencia_id,usuario_id,accion,descripcion,ciclo_atencion)
+            VALUES (:id,:jefe,'REASIGNACION',:descripcion,:ciclo)"""),
+            {"id":incidencia_id,"jefe":usuario_actual.id,"ciclo":ciclo,
+             "descripcion":f"Responsable anterior: {anterior['tecnico_id']}. Nuevo responsable: {tecnico}. Motivo: {datos.motivo}"})
+        result=AsignacionV4Respuesta(asignacion_id=nueva,incidencia_id=incidencia_id,
+            tecnico_id=tecnico,ciclo_atencion=ciclo,estado=ticket.estado)
+        db.commit()
+        return result
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Conflicto de asignación. Actualiza la incidencia.") from None
+    except Exception:
+        db.rollback()
+        raise
 
 
 @router.post("/{incidencia_id}/tomar", response_model=TomaV4Respuesta, status_code=status.HTTP_201_CREATED)

@@ -3,8 +3,8 @@ import { solicitarAPI, type PerfilReal, type Rol } from "./api"
 import { Badge, Icon } from "./RealUI"
 
 type Area = { id: string; nombre: string; activo: boolean }
-type Configuracion = { permisos_verificados?: boolean; edicion_habilitada: boolean; invitaciones_habilitadas: boolean; gestion_ampliada?: boolean; motivos: string[] }
-type Persona = PerfilReal & { archivado?: boolean; correo?: string | null; activacion?: "ACTIVADA" | "PENDIENTE" | "DESCONOCIDA" }
+type Configuracion = { permisos_verificados?: boolean; permisos_alta_verificados?: boolean; edicion_habilitada: boolean; invitaciones_habilitadas: boolean; gestion_ampliada?: boolean; motivos: string[] }
+type Persona = PerfilReal & { alta_controlada?: boolean; archivado?: boolean; correo?: string | null; activacion?: "ACTIVADA" | "PENDIENTE" | "DESCONOCIDA" }
 const acciones = {
   reenviar: "Reenviar invitación de activación", recuperar: "Enviar recuperación de contraseña",
   habilitar: "Rehabilitar usuario", deshabilitar: "Deshabilitar usuario",
@@ -59,7 +59,8 @@ function MenuPerfil({ persona, propio, configuracion, abrir, pedirAccion }: {
   const autorizado = configuracion?.edicion_habilitada === true
   const editar = autorizado && !persona.archivado
   const enlace = persona.activacion === "ACTIVADA" ? "recuperar" : "reenviar"
-  const mostrarEnlace = autorizado && !persona.archivado
+  const altaControlada = persona.alta_controlada && configuracion?.invitaciones_habilitadas
+  const mostrarEnlace = (autorizado || altaControlada) && !persona.archivado
   const administrar = autorizado && !propio
   const requiereMigracion = "Disponible cuando se aplique la migración de Gestión de usuarios."
   function elegir(accion: () => void) {
@@ -89,7 +90,7 @@ function MenuPerfil({ persona, propio, configuracion, abrir, pedirAccion }: {
       <div className="admin-menu-group">
         <button type="button" onClick={() => elegir(() => abrir(persona, true))}><Icon name="login-eye" />Ver perfil</button>
         {editar && <button className="admin-menu-editar" type="button" onClick={() => elegir(() => abrir(persona))}><Icon name="tool" />Editar perfil</button>}
-        {mostrarEnlace && opcion(enlace, !ampliada ? requiereMigracion : !configuracion?.invitaciones_habilitadas ? "El envío de correos está restringido." : !persona.correo ? "La cuenta no tiene correo registrado en Supabase Auth." : undefined)}
+        {mostrarEnlace && opcion(enlace, altaControlada ? undefined : !ampliada ? requiereMigracion : !configuracion?.invitaciones_habilitadas ? "El envío de correos está restringido." : !persona.correo ? "La cuenta no tiene correo registrado en Supabase Auth." : undefined)}
       </div>
       {administrar && <>
         <div className="admin-menu-group">
@@ -141,6 +142,9 @@ export default function RealAdministration({ token, perfil }: { token: string; p
   const [rol, setRol] = useState<Rol>("REPRESENTANTE")
   const [area, setArea] = useState("")
   const [guardando, setGuardando] = useState(false)
+  const solicitudAlta = useRef("")
+  const datosAlta = useRef("")
+  const [habilitadoAlta, setHabilitadoAlta] = useState(true)
   const [auditoria,setAuditoria] = useState<{id:string;accion:string;actor_id:string;usuario_id:string;fecha_registro:string}[]|null>(null)
   const [errorAuditoria,setErrorAuditoria] = useState("")
   const [cargandoAuditoria, setCargandoAuditoria] = useState(false)
@@ -154,7 +158,7 @@ export default function RealAdministration({ token, perfil }: { token: string; p
       solicitarAPI<Configuracion>("/api/administracion/configuracion", token),
     ]).then(([personas, dependencias, config]) => {
       if (!vigente) return
-      setUsuarios(personas); setAreas(dependencias); setConfiguracion({ ...config, edicion_habilitada: config.edicion_habilitada && config.permisos_verificados === true, invitaciones_habilitadas: config.invitaciones_habilitadas && config.permisos_verificados === true })
+      setUsuarios(personas); setAreas(dependencias); setConfiguracion({ ...config, edicion_habilitada: config.edicion_habilitada && config.permisos_verificados === true, invitaciones_habilitadas: config.invitaciones_habilitadas && (config.permisos_alta_verificados ?? config.permisos_verificados) === true })
     }).catch((fallo: unknown) => { if (vigente) setError(mensajeError(fallo)) })
       .finally(() => { if (vigente) setCargando(false) })
     return () => { vigente = false }
@@ -199,6 +203,7 @@ export default function RealAdministration({ token, perfil }: { token: string; p
   }
 
   function abrir(persona: Persona | "invitar", lectura = false) {
+    solicitudAlta.current = crypto.randomUUID(); datosAlta.current = ""; setHabilitadoAlta(true)
     setSoloLectura(lectura)
     setCorreoPerfil(null)
     setUsuarioEditado(false)
@@ -216,18 +221,21 @@ export default function RealAdministration({ token, perfil }: { token: string; p
     setGuardando(true); setError(""); setMensaje("")
     try {
       const datos = { nombre_completo: nombre.trim(), usuario: usuario.trim(), rol, area_id: areaSeleccionada }
-      const cambios = edicion === "invitar" ? { ...datos, correo: correo.trim() } : {
+      const alta = { ...datos, correo: correo.trim(), habilitado: habilitadoAlta }
+      if (invitando && datosAlta.current && datosAlta.current !== JSON.stringify(alta)) throw new Error("La solicitud anterior puede estar pendiente. Reinténtala con sus mismos datos o consulta el directorio antes de iniciar otra alta.")
+      if (invitando) datosAlta.current = JSON.stringify(alta)
+      const cambios = edicion === "invitar" ? { ...alta, solicitud_id: solicitudAlta.current } : {
         ...(datos.nombre_completo !== edicion.nombre_completo && { nombre_completo: datos.nombre_completo }),
         ...(datos.usuario !== edicion.usuario && { usuario: datos.usuario }),
         ...(datos.rol !== edicion.rol && { rol: datos.rol }),
         ...(datos.area_id !== edicion.area_id && { area_id: datos.area_id }),
       }
       if (Object.keys(cambios).length === 0) { setEdicion(null); return }
-      await solicitarAPI<PerfilReal>(invitando ? "/api/usuarios/invitar" : `/api/usuarios/${encodeURIComponent(edicion.id)}`, token, {
+      const resultado = await solicitarAPI<PerfilReal & { mensaje?: string }>(invitando ? "/api/usuarios/invitar" : `/api/usuarios/${encodeURIComponent(edicion.id)}`, token, {
         method: invitando ? "POST" : "PATCH",
         body: JSON.stringify(cambios),
       })
-      setMensaje(invitando ? "Supabase aceptó la invitación y el perfil fue registrado. La entrega del correo y la activación deben confirmarse con el destinatario." : "Perfil actualizado correctamente.")
+      setMensaje(invitando ? resultado.mensaje || "Perfil registrado. Comprueba el estado de la invitación en el directorio." : "Perfil actualizado correctamente.")
       setEdicion(null); setRecarga((x) => x + 1)
     } catch (fallo) { setError(mensajeError(fallo)) }
     finally { setGuardando(false) }
@@ -242,8 +250,9 @@ export default function RealAdministration({ token, perfil }: { token: string; p
     if (!confirmacion || guardando) return
     setGuardando(true); setError("")
     try {
-      const resultado = await solicitarAPI<{ mensaje: string }>(`/api/usuarios/${encodeURIComponent(confirmacion.persona.id)}/acciones`, token, {
-        method: "POST", body: JSON.stringify({ accion: confirmacion.accion }),
+      const reenvioAlta = confirmacion.accion === "reenviar" && confirmacion.persona.alta_controlada
+      const resultado = await solicitarAPI<{ mensaje: string }>(`/api/usuarios/${encodeURIComponent(confirmacion.persona.id)}${reenvioAlta ? "/invitacion/reenviar" : "/acciones"}`, token, {
+        method: "POST", body: JSON.stringify(reenvioAlta ? { solicitud_id: crypto.randomUUID() } : { accion: confirmacion.accion }),
       })
       setConfirmacion(null); setMensaje(resultado.mensaje); setRecarga(x => x + 1)
       if (confirmacion.accion === "restaurar" || confirmacion.accion === "restaurar_habilitado") {
@@ -391,6 +400,7 @@ export default function RealAdministration({ token, perfil }: { token: string; p
             : <label className={invitando ? "admin-invitation-area" : undefined}>Área<select value={area} onChange={e => setArea(e.target.value)} required disabled={guardando || soloLectura}><option value="">Seleccionar área</option>{areas.filter(a => a.activo || (!invitando && a.id === area)).map(a => <option key={a.id} value={a.id}>{a.nombre}{!a.activo ? " (inactiva)" : ""}</option>)}</select></label>}
         </div>
         {propiasCredenciales && !soloLectura && <p className="help">Tu rol se protege para conservar el acceso de la jefatura.</p>}
+        {invitando && <label className="checkline"><input type="checkbox" checked={habilitadoAlta} onChange={e => setHabilitadoAlta(e.target.checked)} disabled={guardando} />Perfil habilitado al completar su activación</label>}
         {error && <div className="auth-error" role="alert">{error}</div>}
         <div className="modal-actions">
           <button type="button" className="outline" autoFocus={soloLectura} disabled={guardando} onClick={() => { setEdicion(null); setError("") }}>{soloLectura ? "Cerrar" : "Cancelar"}</button>

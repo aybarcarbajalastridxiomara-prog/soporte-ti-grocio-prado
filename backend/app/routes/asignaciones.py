@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.db import get_db
+from app.routes.contexto_asignacion import tecnico_asignable
 from app.models import (
     Asignacion,
     HistorialIncidencia,
@@ -49,6 +50,8 @@ class ReasignacionCrear(BaseModel):
 
     nuevo_tecnico_id: UUID
     motivo: str = Field(min_length=5, max_length=500)
+    asignacion_actual_id: UUID | None = None
+    ciclo_actual: int | None = Field(default=None, ge=1)
 
 
 @router.post(
@@ -209,7 +212,7 @@ def asignar_incidencia(
             )
 
         # Comprobar que el tecnico exista y este habilitado.
-        tecnico = db.get(Usuario, datos.tecnico_id)
+        tecnico = tecnico_asignable(db, datos.tecnico_id)
 
         if tecnico is None or not tecnico.habilitado:
             raise HTTPException(
@@ -354,7 +357,12 @@ def reasignar_incidencia(
                 detail="El ticket no tiene responsable activo.",
             )
 
-        tecnico = db.get(Usuario, datos.nuevo_tecnico_id)
+        if datos.ciclo_actual not in (None, 1) or (
+            datos.asignacion_actual_id is not None and datos.asignacion_actual_id != anterior.id
+        ):
+            raise HTTPException(409, "El responsable o el ciclo cambió. Actualiza antes de reasignar.")
+
+        tecnico = tecnico_asignable(db, datos.nuevo_tecnico_id)
 
         if tecnico is None or not tecnico.habilitado:
             raise HTTPException(
