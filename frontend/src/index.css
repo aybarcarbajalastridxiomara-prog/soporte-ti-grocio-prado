@@ -936,6 +936,8 @@
 .real-admin .admin-profile-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .real-admin .admin-profile-fields label { min-width: 0; margin: 0; }
 .real-admin .admin-profile-fields :is(input, select) { width: 100%; min-width: 0; }
+.real-admin .admin-invitation-fields .admin-profile-email { grid-column: auto; }
+.real-admin .admin-invitation-fields .admin-invitation-area { grid-column: 1 / -1; }
 .real-admin .admin-profile-email { grid-column: 1 / -1; }
 .real-admin .admin-profile-email span { display: flex; align-items: center; gap: 5px; }
 .real-admin .admin-profile-email .icon { width: 15px; height: 15px; }

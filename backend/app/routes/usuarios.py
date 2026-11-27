@@ -65,6 +65,8 @@ def consultar_mi_perfil(
 
 
 RolAdministrado = Literal["JEFE", "ASISTENTE", "PRACTICANTE", "REPRESENTANTE"]
+RolInvitable = Literal["ASISTENTE", "PRACTICANTE", "REPRESENTANTE"]
+AREA_INFORMATICA = "Unidad de Racionalización e Informática"
 
 
 class AreaLectura(BaseModel):
@@ -104,9 +106,9 @@ class UsuarioInvitar(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     correo: str = Field(min_length=5, max_length=254, pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
     nombre_completo: str = Field(min_length=1, max_length=150)
-    usuario: str = Field(min_length=3, max_length=80, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")
+    usuario: str = Field(min_length=3, max_length=80, pattern=r"^[a-z0-9][a-z0-9_.-]*$")
     area_id: UUID
-    rol: RolAdministrado
+    rol: RolInvitable
 
 
 def estado_administracion() -> dict:
@@ -304,10 +306,11 @@ def historial_administrativo(_jefe: Usuario = Depends(require_roles("JEFE")), db
         raise HTTPException(503, "Historial administrativo pendiente de preparar en este entorno.") from None
 
 
-def validar_area(db: Session, area_id: UUID):
+def validar_area(db: Session, area_id: UUID) -> Area:
     area = db.get(Area, area_id)
     if area is None or not area.activo:
         raise HTTPException(422, "Seleccione un área activa existente.")
+    return area
 
 
 def validar_cupo_antes_de_invitar(db: Session, datos: UsuarioInvitar):
@@ -381,9 +384,11 @@ def invitar_usuario(
         raise HTTPException(503, " ".join(configuracion["motivos"]))
     comprobar_escritura(db)
     bloquear_jefes(db, jefe)
-    validar_area(db, datos.area_id)
+    area = validar_area(db, datos.area_id)
+    if datos.rol in {"ASISTENTE", "PRACTICANTE"} and area.nombre != AREA_INFORMATICA:
+        raise HTTPException(422, "Asistentes y practicantes deben pertenecer a la Unidad de Racionalización e Informática.")
     validar_cupo_antes_de_invitar(db, datos)
-    if db.scalar(select(Usuario.id).where(Usuario.usuario == datos.usuario)):
+    if db.scalar(select(Usuario.id).where(func.lower(Usuario.usuario) == datos.usuario).limit(1)):
         raise HTTPException(409, "El nombre de usuario ya está registrado.")
     if gestion_ampliada_disponible(db) and any(
         fila["correo"] and fila["correo"].casefold() == datos.correo.casefold()

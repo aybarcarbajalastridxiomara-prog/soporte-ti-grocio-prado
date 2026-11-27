@@ -25,6 +25,22 @@ const advertencias: Record<Accion, string> = {
   eliminar: "Se eliminarán la cuenta de Auth y el perfil si carecen de dependencias históricas. Esta acción es irreversible.",
 }
 const roles: Rol[] = ["JEFE", "ASISTENTE", "PRACTICANTE", "REPRESENTANTE"]
+const rolesInvitables = roles.filter(rol => rol !== "JEFE")
+const areaInformaticaNombre = "Unidad de Racionalización e Informática"
+
+function normalizarUsuario(valor: string) {
+  return valor.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+}
+
+function sugerirUsuario(nombre: string, ocupados: Set<string>) {
+  const palabras = normalizarUsuario(nombre).split(/\s+/).map(palabra => palabra.replace(/[^a-z0-9]/g, "")).filter(Boolean)
+  if (palabras.length < 2) return ""
+  const base = `${palabras[0].slice(0, 37)}.${palabras[palabras.length - 1].slice(0, 37)}`
+  let sugerencia = base
+  for (let sufijo = 2; ocupados.has(sugerencia); sufijo++) sugerencia = `${base}${sufijo}`
+  return sugerencia
+}
+
 const mensajeError = (error: unknown) => error instanceof Error ? error.message : "No se pudo completar la operación."
 const iniciales = (nombre: string) => nombre.trim().split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase()).join("")
 const estado = (persona: Persona) => persona.archivado ? "Archivado" : persona.habilitado ? "Habilitado" : "Deshabilitado"
@@ -119,6 +135,7 @@ export default function RealAdministration({ token, perfil }: { token: string; p
   const [confirmacion, setConfirmacion] = useState<{ persona: Persona; accion: Accion } | null>(null)
   const [nombre, setNombre] = useState("")
   const [usuario, setUsuario] = useState("")
+  const [usuarioEditado, setUsuarioEditado] = useState(false)
   const [correo, setCorreo] = useState("")
   const [correoPerfil, setCorreoPerfil] = useState<{ id: string; valor?: string | null; error?: string } | null>(null)
   const [rol, setRol] = useState<Rol>("REPRESENTANTE")
@@ -168,9 +185,23 @@ export default function RealAdministration({ token, perfil }: { token: string; p
     }
   }, [])
 
+  const invitando = edicion === "invitar"
+  const areaInformatica = areas.find(a => a.activo && a.nombre === areaInformaticaNombre)
+  const invitacionTecnica = invitando && (rol === "ASISTENTE" || rol === "PRACTICANTE")
+  const areaSeleccionada = invitacionTecnica ? areaInformatica?.id || "" : area
+  const usuarioOcupado = invitando && usuarios.some(persona => persona.usuario.toLowerCase() === usuario)
+
+  function cambiarNombre(valor: string) {
+    setNombre(valor)
+    if (invitando && !usuarioEditado) {
+      setUsuario(sugerirUsuario(valor, new Set(usuarios.map(persona => persona.usuario.toLowerCase()))))
+    }
+  }
+
   function abrir(persona: Persona | "invitar", lectura = false) {
     setSoloLectura(lectura)
     setCorreoPerfil(null)
+    setUsuarioEditado(false)
     setEdicion(persona); setError(""); setMensaje(""); setCorreo("")
     setNombre(persona === "invitar" ? "" : persona.nombre_completo)
     setUsuario(persona === "invitar" ? "" : persona.usuario)
@@ -181,12 +212,11 @@ export default function RealAdministration({ token, perfil }: { token: string; p
   async function guardar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault()
     if (guardando || soloLectura || !edicion || !configuracion) return
-    const invitando = edicion === "invitar"
-    if (invitando ? !configuracion.invitaciones_habilitadas : !configuracion.edicion_habilitada) return
+    if (edicion === "invitar" ? (!configuracion.invitaciones_habilitadas || usuarioOcupado || !areaSeleccionada) : !configuracion.edicion_habilitada) return
     setGuardando(true); setError(""); setMensaje("")
     try {
-      const datos = { nombre_completo: nombre.trim(), usuario: usuario.trim(), rol, area_id: area }
-      const cambios = invitando ? { ...datos, correo: correo.trim() } : {
+      const datos = { nombre_completo: nombre.trim(), usuario: usuario.trim(), rol, area_id: areaSeleccionada }
+      const cambios = edicion === "invitar" ? { ...datos, correo: correo.trim() } : {
         ...(datos.nombre_completo !== edicion.nombre_completo && { nombre_completo: datos.nombre_completo }),
         ...(datos.usuario !== edicion.usuario && { usuario: datos.usuario }),
         ...(datos.rol !== edicion.rol && { rol: datos.rol }),
@@ -339,22 +369,32 @@ export default function RealAdministration({ token, perfil }: { token: string; p
         </div>
       </div>
       <form onSubmit={guardar}>
-        <div className="admin-profile-fields">
-          <label>Nombre completo<input autoFocus={!soloLectura} value={nombre} onChange={e => setNombre(e.target.value)} required maxLength={150} readOnly={soloLectura} disabled={guardando} /></label>
-          <label>Usuario<input value={usuario} onChange={e => setUsuario(e.target.value)} required minLength={3} maxLength={80} pattern={"[a-zA-Z0-9][a-zA-Z0-9_.\\-]*"} readOnly={soloLectura} disabled={guardando} /></label>
+        <div className={invitando ? "admin-profile-fields admin-invitation-fields" : "admin-profile-fields"}>
+          <label>Nombre completo<input autoFocus={!soloLectura} value={nombre} onChange={e => cambiarNombre(e.target.value)} required maxLength={150} readOnly={soloLectura} disabled={guardando} /></label>
+          <label><span id="admin-usuario-etiqueta">Usuario</span><input aria-labelledby="admin-usuario-etiqueta" value={usuario} onChange={e => {
+            setUsuarioEditado(true)
+            setUsuario(invitando ? normalizarUsuario(e.target.value).replace(/\s/g, "") : e.target.value)
+          }} required minLength={3} maxLength={80} pattern={invitando ? "[a-z0-9][a-z0-9_.\\-]*" : "[a-zA-Z0-9][a-zA-Z0-9_.\\-]*"} readOnly={soloLectura} disabled={guardando}
+            aria-invalid={usuarioOcupado || undefined} aria-describedby={invitando ? "admin-invitacion-usuario" : undefined} />
+            {invitando && <small id="admin-invitacion-usuario" role={usuarioOcupado ? "status" : undefined}>{usuarioOcupado ? "Este usuario ya está registrado." : "Sugerido a partir del nombre. Puedes editarlo."}</small>}
+          </label>
           <label className="admin-profile-email"><span><Icon name={edicion === "invitar" ? "login-mail" : "login-lock"} />Correo institucional</span>
             {edicion === "invitar" ? <input type="email" value={correo} onChange={e => setCorreo(e.target.value)} required maxLength={254} disabled={guardando} />
               : <><input value={correoPerfil?.id !== edicion.id ? "Consultando Supabase Auth…" : correoPerfil.error ? "Error de consulta" : correoPerfil.valor || "Sin correo registrado"} readOnly aria-describedby={correoPerfil?.error ? "admin-correo-aviso" : undefined} />
                 {correoPerfil?.error && <small id="admin-correo-aviso" role="status">{correoPerfil.error}</small>}</>}
           </label>
-          <label>Rol<select value={rol} onChange={e => setRol(e.target.value as Rol)} disabled={guardando || propiasCredenciales || soloLectura}>{roles.map(opcion => <option key={opcion}>{opcion}</option>)}</select></label>
-          <label>Área<select value={area} onChange={e => setArea(e.target.value)} required disabled={guardando || soloLectura}><option value="">Seleccionar área</option>{areas.filter(a => a.activo || a.id === area).map(a => <option key={a.id} value={a.id} disabled={!a.activo && a.id !== area}>{a.nombre}{!a.activo ? " (inactiva)" : ""}</option>)}</select></label>
+          <label>Rol<select value={rol} onChange={e => setRol(e.target.value as Rol)} disabled={guardando || propiasCredenciales || soloLectura}>{(invitando ? rolesInvitables : roles).map(opcion => <option key={opcion}>{opcion}</option>)}</select></label>
+          {invitacionTecnica
+            ? <label className="admin-invitation-area"><span id="admin-area-etiqueta">Área</span><input aria-labelledby="admin-area-etiqueta" value={areaInformatica?.nombre || "Informática no está disponible"} readOnly />
+                <small>{areaInformatica ? "Se asigna automáticamente al personal de Informática." : "El área debe estar activa para enviar la invitación."}</small>
+              </label>
+            : <label className={invitando ? "admin-invitation-area" : undefined}>Área<select value={area} onChange={e => setArea(e.target.value)} required disabled={guardando || soloLectura}><option value="">Seleccionar área</option>{areas.filter(a => a.activo || (!invitando && a.id === area)).map(a => <option key={a.id} value={a.id}>{a.nombre}{!a.activo ? " (inactiva)" : ""}</option>)}</select></label>}
         </div>
         {propiasCredenciales && !soloLectura && <p className="help">Tu rol se protege para conservar el acceso de la jefatura.</p>}
         {error && <div className="auth-error" role="alert">{error}</div>}
         <div className="modal-actions">
           <button type="button" className="outline" autoFocus={soloLectura} disabled={guardando} onClick={() => { setEdicion(null); setError("") }}>{soloLectura ? "Cerrar" : "Cancelar"}</button>
-          {!soloLectura && <button type="submit" className="primary" disabled={guardando}>{guardando ? "Guardando…" : edicion === "invitar" ? "Enviar invitación" : "Guardar cambios"}</button>}
+          {!soloLectura && <button type="submit" className="primary" disabled={guardando || usuarioOcupado || (invitacionTecnica && !areaInformatica)}>{guardando ? "Guardando…" : edicion === "invitar" ? "Enviar invitación" : "Guardar cambios"}</button>}
         </div>
       </form>
     </DialogoAdministrativo>}
