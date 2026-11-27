@@ -18,6 +18,7 @@ class Settings:
     supabase_service_role_key: str = ""
     supabase_smtp_configurado: bool = False
     administracion_perfiles_habilitada: bool = False
+    invitaciones_usuarios_habilitadas: bool | None = None
     brevo_habilitado: bool = False
     brevo_api_key: str = ""
     correo_remitente: str = ""
@@ -57,6 +58,8 @@ def get_settings() -> Settings:
         supabase_service_role_key=os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip(),
         supabase_smtp_configurado=os.getenv("SUPABASE_SMTP_CONFIGURADO", "false").lower() == "true",
         administracion_perfiles_habilitada=os.getenv("ADMINISTRACION_PERFILES_HABILITADA", "false").lower() == "true",
+        invitaciones_usuarios_habilitadas=(os.getenv("INVITACIONES_USUARIOS_HABILITADAS", "").lower() == "true"
+            if "INVITACIONES_USUARIOS_HABILITADAS" in os.environ else None),
         brevo_habilitado=os.getenv("BREVO_HABILITADO", "false").lower() == "true",
         brevo_api_key=os.getenv("BREVO_API_KEY", "").strip(),
         correo_remitente=os.getenv("CORREO_REMITENTE", "").strip(),

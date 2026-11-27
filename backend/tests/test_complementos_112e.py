@@ -19,7 +19,7 @@ class Complementos112E(unittest.TestCase):
             with self.subTest(),self.assertRaises(HTTPException) as error:cabeceras_supabase(clave)
             self.assertNotIn('segunda-linea',error.exception.detail)
     def test_nueva_clave_opaca_no_se_presenta_como_jwt_al_invitar(self):
-        settings=replace(get_settings(),supabase_service_role_key='sb_secret_qa_no_operativa',supabase_url='https://qa-ficticio.supabase.co')
+        settings=replace(get_settings(),supabase_service_role_key='sb_secret_qa_no_operativa',supabase_url='https://qa-ficticio.supabase.co',frontend_url='https://frontend.example.invalid')
         with patch('app.supabase_admin.get_settings',return_value=settings),patch('app.supabase_admin.peticion_privada',return_value=(200,b'{}')) as request:
             invitar_en_supabase('prueba@example.invalid')
             self.assertTrue('Authorization' not in request.call_args.kwargs['headers'],'La clave opaca solo debe ir en apikey, nunca como JWT.')

@@ -10,9 +10,11 @@ os.environ["DATABASE_URL"] = ""
 os.environ["SUPABASE_URL"] = ""
 
 from fastapi.testclient import TestClient
-from sqlalchemy import MetaData, create_engine, event, text
+from sqlalchemy import MetaData, create_engine, event, text, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
+from sqlalchemy.exc import SQLAlchemyError
+from fastapi import HTTPException
 
 from app.auth import get_identity
 from app.config import get_settings
@@ -55,7 +57,7 @@ class Preentrega111A(unittest.TestCase):
         app.dependency_overrides[get_db] = session
         app.dependency_overrides[get_identity] = lambda: self.ids[self.actor]
         self.settings = replace(get_settings(), administracion_perfiles_habilitada=True,
-            supabase_service_role_key="secreto-solo-prueba", supabase_url="https://supabase.example.invalid",
+            supabase_service_role_key="secreto-solo-prueba", supabase_url="https://qa-ficticio.supabase.co", frontend_url="https://frontend.example.invalid",
             supabase_smtp_configurado=True)
         self.config_patch = patch("app.routes.usuarios.get_settings", lambda: self.settings)
         self.config_patch.start()
@@ -233,7 +235,8 @@ class Preentrega111A(unittest.TestCase):
         self.assertEqual(self.client.patch(f'/api/usuarios/{self.ids["ASISTENTE"]}', json={"habilitado": False}).status_code, 503)
 
     def test_invitacion_y_rechazo_de_sobrescritura(self):
-        with patch("app.routes.usuarios.invitar_en_supabase", return_value={"id": str(uuid4())}) as invite:
+        identidad = uuid4()
+        with patch("app.routes.usuarios.identidad_pendiente", return_value=identidad), patch("app.routes.usuarios.invitar_en_supabase", return_value={"id": str(identidad)}) as invite:
             # El perfil necesita el default PostgreSQL de fecha en producción.
             from sqlalchemy import event
             def default_fecha(mapper, connection, target):
@@ -245,8 +248,9 @@ class Preentrega111A(unittest.TestCase):
                 event.remove(Usuario, "before_insert", default_fecha)
             self.assertEqual(response.status_code, 201, response.text)
             invite.assert_called_once_with("prueba@example.invalid")
-        with patch("app.routes.usuarios.invitar_en_supabase", return_value={"id": str(self.ids["JEFE"])}) as invite:
+        with patch("app.routes.usuarios.identidad_pendiente", return_value=self.ids["JEFE"]), patch("app.routes.usuarios.invitar_en_supabase") as invite:
             self.assertEqual(self.client.post("/api/usuarios/invitar", json={**self.invitacion(), "usuario": "otra_prueba"}).status_code, 409)
+            invite.assert_not_called()
         self.assertEqual(self.client.get("/api/me").json()["rol"], "JEFE")
 
     def test_invitacion_valida_rol_area_y_usuario_antes_de_contactar_auth(self):
@@ -281,7 +285,8 @@ class Preentrega111A(unittest.TestCase):
         event.listen(Usuario, "before_insert", default_fecha)
         self.addCleanup(event.remove, Usuario, "before_insert", default_fecha)
         for rol in ("ASISTENTE", "PRACTICANTE"):
-            with self.subTest(rol=rol), patch("app.routes.usuarios.invitar_en_supabase", return_value={"id": str(uuid4())}) as externo:
+            identidad = uuid4()
+            with self.subTest(rol=rol), patch("app.routes.usuarios.identidad_pendiente", return_value=identidad), patch("app.routes.usuarios.invitar_en_supabase", return_value={"id": str(identidad)}) as externo:
                 respuesta = self.client.post("/api/usuarios/invitar", json={**self.invitacion(), "usuario": f"alta.{rol.lower()}", "rol": rol})
                 self.assertEqual(respuesta.status_code, 201, respuesta.text)
                 self.assertEqual(respuesta.json()["area_id"], str(self.area))
@@ -294,6 +299,104 @@ class Preentrega111A(unittest.TestCase):
         with patch("app.routes.usuarios.invitar_en_supabase") as externo:
             self.assertEqual(self.client.post("/api/usuarios/invitar",json=self.invitacion()).status_code,409)
             externo.assert_not_called()
+
+    def preparar_alta(self):
+        identidad = uuid4()
+        def fecha(mapper, connection, target):
+            target.fecha_creacion = datetime.now(timezone.utc)
+        event.listen(Usuario, "before_insert", fecha)
+        self.addCleanup(event.remove, Usuario, "before_insert", fecha)
+        crear = patch("app.routes.usuarios.identidad_pendiente", return_value=identidad).start()
+        enviar = patch("app.routes.usuarios.invitar_en_supabase", return_value={"id": str(identidad)}).start()
+        self.addCleanup(patch.stopall)
+        return identidad, crear, enviar, {**self.invitacion(), "solicitud_id": str(uuid4())}
+
+    def test_alta_guarda_perfil_antes_del_envio_y_reintento_no_duplica(self):
+        identidad, crear, enviar, body = self.preparar_alta()
+        def enviado(correo):
+            with Session(self.engine) as db:
+                self.assertEqual(db.get(Usuario, identidad).rol, "REPRESENTANTE")
+            return {"id": str(identidad)}
+        enviar.side_effect = enviado
+        for _ in range(2):
+            r = self.client.post("/api/usuarios/invitar", json=body)
+            self.assertEqual(r.status_code, 201, r.text)
+            self.assertEqual(r.json()["estado_invitacion"], "ACEPTADA_POR_AUTH")
+        crear.assert_called_once()
+        enviar.assert_called_once()
+        self.assertEqual(self.client.post("/api/usuarios/invitar", json={**body, "rol": "PRACTICANTE"}).status_code, 409)
+        self.assertEqual(self.client.get("/api/me").json()["rol"], "JEFE")
+
+    def test_fallo_postgresql_no_envia_y_reintento_concilia_su_identidad(self):
+        identidad, crear, enviar, body = self.preparar_alta()
+        def fallo(mapper, connection, target):
+            if target.id == identidad:
+                raise SQLAlchemyError("fallo ficticio de persistencia")
+        event.listen(Usuario, "before_insert", fallo)
+        try:
+            self.assertEqual(self.client.post("/api/usuarios/invitar", json=body).status_code, 503)
+        finally:
+            event.remove(Usuario, "before_insert", fallo)
+        enviar.assert_not_called()
+        with Session(self.engine) as db:
+            self.assertIsNone(db.get(Usuario, identidad))
+        r = self.client.post("/api/usuarios/invitar", json=body)
+        self.assertEqual(r.status_code, 201, r.text)
+        self.assertEqual(crear.call_count, 2)
+        self.assertEqual(crear.call_args_list[0], crear.call_args_list[1])
+        enviar.assert_called_once()
+
+    def test_error_smtp_conserva_perfil_y_no_declara_correo_entregado(self):
+        identidad, _, enviar, body = self.preparar_alta()
+        enviar.side_effect = HTTPException(502, "Proveedor no disponible")
+        for _ in range(2):
+            r = self.client.post("/api/usuarios/invitar", json=body)
+            self.assertEqual(r.status_code, 201, r.text)
+            self.assertEqual(r.json()["estado_invitacion"], "PENDIENTE_COMPROBAR")
+        enviar.assert_called_once()
+        with Session(self.engine) as db:
+            self.assertIsNotNone(db.get(Usuario, identidad))
+
+    def test_alta_puede_habilitarse_sin_edicion_ni_eliminacion(self):
+        _, _, _, body = self.preparar_alta()
+        self.settings = replace(self.settings, administracion_perfiles_habilitada=False, invitaciones_usuarios_habilitadas=True)
+        config = self.client.get("/api/administracion/configuracion").json()
+        self.assertTrue(config["invitaciones_habilitadas"])
+        self.assertTrue(config["permisos_alta_verificados"])
+        self.assertFalse(config["edicion_habilitada"])
+        self.assertEqual(self.client.post("/api/usuarios/invitar", json=body).status_code, 201)
+        self.assertEqual(self.client.patch(f'/api/usuarios/{self.ids["ASISTENTE"]}', json={"habilitado": False}).status_code, 503)
+
+    def test_flag_explicito_false_no_hereda_edicion_y_estado_estricto(self):
+        _, crear, enviar, body = self.preparar_alta()
+        self.settings = replace(self.settings, invitaciones_usuarios_habilitadas=False)
+        self.assertEqual(self.client.post("/api/usuarios/invitar", json=body).status_code, 503)
+        crear.assert_not_called(); enviar.assert_not_called()
+        self.settings = replace(self.settings, invitaciones_usuarios_habilitadas=True)
+        self.assertEqual(self.client.post("/api/usuarios/invitar", json={**body, "habilitado": "false"}).status_code, 422)
+        r = self.client.post("/api/usuarios/invitar", json={**body, "habilitado": False})
+        self.assertEqual(r.status_code, 201, r.text)
+        self.assertFalse(r.json()["habilitado"])
+
+    def test_reenvio_controlado_respeta_intervalo_identidad_y_no_recupera(self):
+        identidad, _, enviar, body = self.preparar_alta()
+        self.assertEqual(self.client.post("/api/usuarios/invitar", json=body).status_code, 201)
+        url = f"/api/usuarios/{identidad}/invitacion/reenviar"
+        with patch("app.routes.usuarios.consultar_correo_supabase", return_value=body["correo"]), patch("app.routes.usuarios.recuperar_en_supabase") as recuperar:
+            self.assertEqual(self.client.post(url, json={}).status_code, 429)
+            with Session(self.engine) as db:
+                for entrada in db.scalars(select(AuditoriaAdministrativa)):
+                    entrada.fecha_registro = datetime.now(timezone.utc) - timedelta(minutes=2)
+                db.commit()
+            solicitud = {"solicitud_id": str(uuid4())}
+            self.assertEqual(self.client.post(url, json=solicitud).status_code, 200)
+            self.assertEqual(self.client.post(url, json=solicitud).status_code, 200)
+            self.assertEqual(self.client.post(url, json={}).status_code, 429)
+            recuperar.assert_not_called()
+        self.assertEqual(enviar.call_count, 2)
+        for rol in ("ASISTENTE", "PRACTICANTE", "REPRESENTANTE"):
+            self.actor = rol
+            self.assertEqual(self.client.post(url, json={}).status_code, 403)
 
 
 if __name__ == "__main__":

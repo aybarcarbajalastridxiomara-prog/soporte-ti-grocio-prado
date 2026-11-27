@@ -236,7 +236,12 @@ class FuncionesV3(unittest.TestCase):
         self.assertEqual(informe.status_code, 200, informe.text)
         self.assertEqual(informe.json()["duracion_total_registrada_minutos"], 10)
         self.assertEqual(self.tomar(id_).status_code, 409)
-        self.assertFalse(self.request("PRACTICANTE", "GET", f"/api/incidencias/{id_}/contexto-toma").json()["puede_tomar"])
+        # Un técnico ajeno al caso cerrado no puede consultar su contexto.
+        # El titular conserva lectura y recibe puede_tomar=false.
+        self.assertEqual(self.request("PRACTICANTE", "GET", f"/api/incidencias/{id_}/contexto-toma").status_code, 404)
+        titular = self.request("ASISTENTE", "GET", f"/api/incidencias/{id_}/contexto-toma")
+        self.assertEqual(titular.status_code, 200, titular.text)
+        self.assertFalse(titular.json()["puede_tomar"])
 
     def test_jefe_toma_registra_solucion_y_cierra_como_responsable(self):
         cierre = self.cerrar(self.crear(), "JEFE")
@@ -287,11 +292,72 @@ class FuncionesV3(unittest.TestCase):
         finally:
             event.remove(self.engine, "before_cursor_execute", fallo)
         self.assertIsNone(self.contexto(id_)["oficial"])
+
+    def preparar_reasignacion(self, ciclo=1):
+        id_ = self.crear() if ciclo == 1 else self.reabierta()[0]
+        ruta = f"/api/asignaciones/{id_}/asignar" if ciclo == 1 else f"/api/v4/incidencias/{id_}/asignar"
+        r = self.request("JEFE", "POST", ruta, {"tecnico_id": str(self.ids["ASISTENTE"])})
+        self.assertEqual(r.status_code, 201, r.text)
+        contexto = self.request("JEFE", "GET", f"/api/incidencias/{id_}/contexto-asignacion")
+        self.assertEqual(contexto.status_code, 200, contexto.text)
+        self.assertTrue(contexto.json()["permisos_verificados"])
+        self.assertTrue(contexto.json()["puede_reasignar"])
+        body = {"nuevo_tecnico_id": str(self.ids["PRACTICANTE"]), "motivo": "Cambio ficticio de turno QA",
+                "asignacion_actual_id": r.json()["asignacion_id"], "ciclo_actual": ciclo}
+        return id_, contexto.json()["ruta_reasignacion"], body
+
+    def test_reasignacion_preserva_responsable_anterior_y_rechaza_formulario_obsoleto(self):
+        id_, ruta, body = self.preparar_reasignacion()
+        r = self.request("JEFE", "POST", ruta, body)
+        self.assertEqual(r.status_code, 201, r.text)
+        anterior = self.fila("SELECT fecha_fin FROM public.asignaciones WHERE id=:id", id=UUID(body["asignacion_actual_id"]))
+        self.assertIsNotNone(anterior["fecha_fin"])
+        self.assertEqual(self.request("JEFE", "POST", ruta, {**body, "nuevo_tecnico_id": str(self.ids["OTRO_ASISTENTE"])}).status_code, 409)
+        self.assertEqual(self.fila("SELECT count(*) n FROM public.asignaciones WHERE incidencia_id=:id AND fecha_fin IS NULL", id=UUID(id_))["n"], 1)
+        evento = self.fila("SELECT usuario_id,descripcion FROM public.historial_incidencias WHERE incidencia_id=:id AND accion='REASIGNACION'", id=UUID(id_))
+        self.assertEqual(evento["usuario_id"], self.ids["JEFE"])
+        self.assertIn(body["motivo"], evento["descripcion"])
+
+    def test_reasignacion_solo_jefe_y_tecnico_habilitado(self):
+        id_, ruta, body = self.preparar_reasignacion()
+        for rol in ("ASISTENTE", "PRACTICANTE", "REPRESENTANTE"):
+            self.assertEqual(self.request(rol, "POST", ruta, body).status_code, 403)
+        self.assertEqual(self.request("JEFE", "POST", ruta, {**body, "nuevo_tecnico_id": str(self.ids["REPRESENTANTE"])}).status_code, 422)
+        self.assertEqual(self.request("JEFE", "POST", ruta, {**body, "nuevo_tecnico_id": str(self.ids["ASISTENTE"])}).status_code, 409)
+        with admin(self.database) as con:
+            con.execute("UPDATE public.usuarios SET habilitado=false WHERE id=%s", (self.ids["PRACTICANTE"],))
+        self.assertEqual(self.request("JEFE", "POST", ruta, body).status_code, 422)
+        self.assertEqual(self.fila("SELECT count(*) n FROM public.historial_incidencias WHERE incidencia_id=:id AND accion='REASIGNACION'", id=UUID(id_))["n"], 0)
+
+    def test_reasignaciones_concurrentes_no_sobrescriben_responsable(self):
+        id_, ruta, body = self.preparar_reasignacion()
+        self.simultaneas([lambda: self.request("JEFE", "POST", ruta, body),
+            lambda: self.request("JEFE", "POST", ruta, {**body, "nuevo_tecnico_id": str(self.ids["OTRO_ASISTENTE"])})])
+        self.assertEqual(self.fila("SELECT count(*) n FROM public.asignaciones WHERE incidencia_id=:id", id=UUID(id_))["n"], 2)
         self.assertIsNone(self.contexto(id_)["version"])
 
 
 class FuncionesV4(FuncionesV3):
     v4 = True
+
+    def test_reasignacion_reabierta_conserva_cierre_anterior_y_segundo_ciclo(self):
+        id_, ruta, body = self.preparar_reasignacion(2)
+        self.assertEqual(self.request("ASISTENTE", "POST", ruta, body).status_code, 403)
+        self.assertEqual(self.request("JEFE", "POST", ruta, {**body, "ciclo_actual": 3}).status_code, 409)
+        r = self.request("JEFE", "POST", ruta, body)
+        self.assertEqual(r.status_code, 201, r.text)
+        self.assertEqual(r.json()["ciclo_atencion"], 2)
+        self.assertEqual(self.request("JEFE", "POST", ruta, body).status_code, 409)
+        self.assertEqual(self.fila("SELECT count(*) n FROM public.historial_incidencias WHERE incidencia_id=:id AND accion='CIERRE' AND ciclo_atencion=1", id=UUID(id_))["n"], 1)
+        self.assertEqual(self.fila("SELECT ciclo_atencion FROM public.historial_incidencias WHERE incidencia_id=:id AND accion='REASIGNACION'", id=UUID(id_))["ciclo_atencion"], 2)
+        self.cerrar_ciclo2(id_, "PRACTICANTE")
+        self.assertEqual(self.fila("SELECT count(*) n FROM public.historial_incidencias WHERE incidencia_id=:id AND accion='CIERRE'", id=UUID(id_))["n"], 2)
+
+    def test_reasignacion_v4_concurrente_solo_una_gana(self):
+        id_, ruta, body = self.preparar_reasignacion(2)
+        self.simultaneas([lambda: self.request("JEFE", "POST", ruta, body),
+            lambda: self.request("JEFE", "POST", ruta, {**body, "nuevo_tecnico_id": str(self.ids["OTRO_ASISTENTE"])})])
+        self.assertEqual(self.fila("SELECT count(*) n FROM public.asignaciones WHERE incidencia_id=:id AND fecha_fin IS NULL AND ciclo_atencion=2", id=UUID(id_))["n"], 1)
 
     def reabierta(self):
         id_ = self.crear()
