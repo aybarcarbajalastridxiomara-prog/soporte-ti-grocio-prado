@@ -851,6 +851,9 @@ jobs:
                   self.registros = []
                   self.confirmado = False
 
+              def get_bind(self):
+                  return SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+
               def scalar(self, consulta):
                   entidad = consulta.column_descriptions[0][
                       "entity"
@@ -864,13 +867,17 @@ jobs:
                           return SimpleNamespace(id=uuid4())
                       return None
 
-                  raise AssertionError("Consulta inesperada")
-
-              def get(self, modelo, identificador):
-                  if modelo is Usuario:
-                      if identificador == tecnico_id:
+                  if entidad is Usuario:
+                      filtro = str(consulta.whereclause)
+                      assert "usuarios.habilitado IS true" in filtro
+                      assert "usuarios.rol IN" in filtro
+                      if (tecnico_id in consulta.compile().params.values()
+                              and self.tecnico.habilitado
+                              and self.tecnico.rol in ("ASISTENTE", "PRACTICANTE")):
                           return self.tecnico
-                  return None
+                      return None
+
+                  raise AssertionError("Consulta inesperada")
 
               def add(self, objeto):
                   self.registros.append(objeto)
@@ -1076,18 +1083,26 @@ jobs:
                   self.registros = []
                   self.confirmado = False
 
+              def get_bind(self):
+                  return SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+
               def scalar(self, consulta):
                   entidad = consulta.column_descriptions[0]["entity"]
                   if entidad is Incidencia:
                       return self.ticket
                   if entidad is Asignacion:
                       return self.anterior
-                  raise AssertionError("Consulta inesperada")
+                  if entidad is Usuario:
+                      filtro = str(consulta.whereclause)
+                      assert "usuarios.habilitado IS true" in filtro
+                      assert "usuarios.rol IN" in filtro
+                      if (nuevo_id in consulta.compile().params.values()
+                              and self.tecnico.habilitado
+                              and self.tecnico.rol in ("ASISTENTE", "PRACTICANTE")):
+                          return self.tecnico
+                      return None
 
-              def get(self, modelo, identificador):
-                  if modelo is Usuario and identificador == nuevo_id:
-                      return self.tecnico
-                  return None
+                  raise AssertionError("Consulta inesperada")
 
               def add(self, objeto):
                   self.registros.append(objeto)
