@@ -360,6 +360,122 @@
 .real-access .login-submit .icon { width: calc(32 * var(--access-unit)); height: calc(32 * var(--access-unit)); }
 .real-access .login-panel .auth-error { margin: 10px 0 0; font-size: 13px; }
 
+.real-app.real-access.real-access-flow { grid-template-columns: 42% minmax(0, 1fr); }
+.real-access-flow .real-access-card-area { padding-inline: 4% 9%; }
+.real-access-flow .login-panel { border-color: #d7e5f4; }
+.real-access-flow .login-panel::before {
+  width: clamp(72px, 15vw, 210px);
+  height: clamp(50px, 11vw, 145px);
+  background: linear-gradient(35deg, #26b4f5 18%, #0879ce 55%, #045482 84%);
+}
+
+.real-access-flow .login-copy {
+  display: grid;
+  grid-template-columns: minmax(90px, 34%) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(16px, 2vw, 32px);
+  margin-bottom: clamp(16px, 2vw, 30px);
+  text-align: left;
+}
+
+.real-access-flow .real-access-copy-text { border-left: 1px solid #d4e1ef; padding-left: clamp(16px, 2vw, 32px); }
+.real-access-flow .login-copy h2 { font-size: clamp(24px, 2.2vw, 39px); color: #082548; }
+.real-access-flow .login-copy p { max-width: 42ch; margin: 0; font-size: clamp(14px, 1.2vw, 20px); }
+.real-access-request .login-copy { grid-template-columns: 1fr; gap: 14px; text-align: center; }
+.real-access-request .real-access-copy-text { padding: 0; border: 0; }
+.real-access-request .login-copy h2 { font-size: clamp(30px, 2.8vw, 48px); }
+.real-access-request .login-copy p { margin-inline: auto; }
+
+.real-access-flow .real-access-support-icon {
+  position: relative;
+  width: 100%;
+  max-width: 232px;
+  height: auto;
+  aspect-ratio: 1.35;
+  margin: 0 auto;
+  border: 0;
+  border-radius: 48%;
+  background: radial-gradient(ellipse, #eef8ff, #d9ecfc 70%, transparent 71%);
+}
+
+.real-access-flow .real-access-laptop { width: 64%; height: 57%; border-color: #084578; background: linear-gradient(145deg, #edf8ff, #9dcef7); color: #0863a8; }
+.real-access-flow .real-access-laptop::before { top: 100%; width: 128%; background: #065896; }
+.real-access-flow .real-access-laptop::after { top: calc(100% + 4 * var(--access-unit)); }
+.real-access-illustration-badge {
+  position: absolute;
+  right: 8%;
+  bottom: 12%;
+  display: grid;
+  place-items: center;
+  width: 31%;
+  aspect-ratio: 1;
+  border: 3px solid #eff8ff;
+  border-radius: 34%;
+  background: #076ebc;
+  color: white;
+  box-shadow: 0 4px 10px #07528138;
+}
+.real-access-request .real-access-illustration-badge { aspect-ratio: 1.25; border-radius: 14%; background: #fff; color: #0871c2; }
+.real-access-illustration-badge .icon { width: 70%; height: 70%; }
+.real-access-required { color: #b91c1c; }
+
+.real-access-requirements {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: linear-gradient(110deg, #eaf5fe, #d3e8fb);
+  color: #0b3764;
+  font-size: 14px;
+}
+.real-access-requirements .icon { flex: none; width: 20px; height: 20px; }
+.real-access-requirements ul { margin: 5px 0 0; padding: 0; list-style: none; }
+.real-access-requirements li { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
+.real-access-requirements li .icon { width: 16px; height: 16px; color: #137b46; }
+
+.real-access-flow-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 20px; }
+.real-access .real-access-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 10px;
+  color: #075c9e;
+  font-weight: 700;
+}
+.real-access .real-access-back .icon { flex: none; width: 20px; height: 20px; }
+.real-access-flow-actions .real-access-back { width: 100%; border: 1px solid #225d91; border-radius: 11px; }
+.real-access-flow-actions .login-submit { margin-top: 0; }
+.real-access-request-back { display: flex; align-items: center; gap: 12px; margin-top: 15px; }
+.real-access-request-back::before, .real-access-request-back::after { content: ""; flex: 1; height: 1px; background: #c1d5eb; }
+.real-access .real-access-back:hover:not(:disabled) { background: #edf6ff; }
+
+.real-access-help {
+  margin: 8px 0 0;
+  color: #48607e;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.real-access-success {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #b6e2ce;
+  border-radius: 10px;
+  background: #eaf8f1;
+  color: #17573d;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.real-access-success .icon { flex: none; width: 18px; height: 18px; }
+
 .real-access-note {
   display: flex;
   align-items: center;
@@ -397,6 +513,11 @@
   .real-access-intro { max-width: 33ch; font-size: clamp(16px, 3.2vw, 20px); }
   .real-access-features { max-width: 450px; margin-top: 22px; }
   .real-access-card-area { width: min(100%, 600px); margin-inline: auto; padding: 23px 24px 30px; }
+  .real-access-flow .real-access-brand-content { padding-bottom: 24px; }
+  .real-app.real-access.real-access-flow { grid-template-columns: minmax(0, 1fr); min-height: 100svh; grid-template-rows: auto 1fr; }
+  .real-access-flow .real-access-card-area { padding-inline: 24px; }
+  .real-access-flow .real-access-municipio { margin-bottom: 0; }
+  .real-access-flow .real-access-brand :is(.real-access-chip, h1, .real-access-intro, .real-access-features) { display: none; }
 }
 
 @media (max-width: 480px) {
@@ -418,6 +539,14 @@
   .real-access .login-panel::before { width: 70px; height: 54px; }
   .real-access-support-icon { width: 72px; height: 64px; margin-bottom: 12px; }
   .real-access .login-copy h2 { font-size: 34px; }
+  .real-access-flow .real-access-card-area { padding-inline: 13px; }
+  .real-access-flow .login-copy { grid-template-columns: 1fr; gap: 12px; text-align: center; }
+  .real-access-flow .real-access-support-icon { max-width: 152px; }
+  .real-access-flow .real-access-copy-text { padding: 0; border: 0; }
+  .real-access-flow .login-copy h2 { font-size: clamp(23px, 6.5vw, 32px); }
+  .real-access-flow .login-copy p { margin-inline: auto; }
+  .real-access-flow-actions { grid-template-columns: 1fr; gap: 8px; }
+  .real-access-flow .real-access-flow-actions .login-submit { margin-top: 0; }
   .real-access .login-copy p { margin-bottom: 19px; }
   .real-access .login-submit { margin-top: 10px; }
   .real-access-note { padding-top: 15px; }

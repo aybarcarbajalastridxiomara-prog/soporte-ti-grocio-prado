@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react"
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react"
 import {
   iniciarSesionReal, consultarPerfilReal, listarIncidenciasReales, consultarResumenReal, sesionReal,
   recibirEnlaceAuthReal, establecerClaveInvitada, consultarUsuarioAuth,
@@ -28,6 +28,77 @@ const titulos: Record<VistaReal, string> = {
   reportes: "Reportes",
 }
 const errorTexto = (error: unknown) => error instanceof Error ? error.message : "No se pudo completar la consulta."
+
+function PantallaAcceso({ titulo, descripcion, icono, children }: {
+  titulo: string; descripcion: string; icono?: string; children: ReactNode
+}) {
+  const encabezado = useRef<HTMLHeadingElement>(null)
+  const solicitud = icono === "login-mail"
+  useEffect(() => {
+    if (icono) encabezado.current?.focus()
+  }, [titulo, icono])
+
+  return <main className={`login-screen real-app real-access${icono ? " real-access-flow" : ""}${solicitud ? " real-access-request" : ""}`}>
+    <header className="real-access-brand">
+      <div className="real-access-scene" aria-hidden="true">
+        <div className="real-access-photo" />
+        <div className="real-access-wave" />
+      </div>
+      <div className="real-access-brand-content">
+        <div className="real-access-municipio">
+          <span className="real-access-seal" aria-hidden="true"><img src={escudoGrocioPrado} alt="" /></span>
+          <div>Municipalidad Distrital de<strong>Grocio Prado</strong></div>
+        </div>
+        <p className="real-access-chip"><Icon name="login-monitor" /> Soporte TI</p>
+        <h1>Sistema de Gestión<br className="real-access-title-break" /> de Incidencias</h1>
+        <p className="real-access-intro">Registro, seguimiento y atención de solicitudes de soporte tecnológico.</p>
+        <ul className="real-access-features">
+          <li><span><Icon name="login-ticket" /></span>Registra<br /> incidencias</li>
+          <li><span><Icon name="users" /></span>Seguimiento<br /> de atención</li>
+          <li><span><Icon name="login-bars" /></span>Reportes<br /> e indicadores</li>
+        </ul>
+      </div>
+    </header>
+    <div className="real-access-card-area">
+      <section className="login-panel" aria-labelledby="real-access-title">
+        <div className="login-copy">
+          <div className="real-access-support-icon" aria-hidden="true">
+            <span className="real-access-laptop"><Icon name={solicitud ? "login-lock" : icono ?? "login-headset"} /></span>
+            {icono && <span className="real-access-illustration-badge"><Icon name={solicitud ? "login-mail" : "login-shield"} /></span>}
+          </div>
+          <div className="real-access-copy-text">
+            <h2 id="real-access-title" ref={encabezado} tabIndex={icono ? -1 : undefined}>{titulo}</h2>
+            <p>{descripcion}</p>
+          </div>
+        </div>
+        {children}
+        {!icono && <footer className="real-access-note">
+          <Icon name="login-shield" />
+          <p>Acceso exclusivo para personal autorizado<br className="real-access-title-break" /> de la Municipalidad Distrital de Grocio Prado.</p>
+        </footer>}
+      </section>
+    </div>
+  </main>
+}
+
+function CampoClaveNueva({ id, etiqueta, valor, guardar, ocupado, ayuda }: {
+  id: string; etiqueta: string; valor: string; guardar: (valor: string) => void; ocupado: boolean; ayuda?: string
+}) {
+  const [visible, setVisible] = useState(false)
+  return <>
+    <label htmlFor={id}><Icon name="login-lock" /> {etiqueta}<span className="real-access-required" aria-hidden="true">*</span></label>
+    <div className="password-field real-access-field">
+      <span aria-hidden="true"><Icon name="login-lock" /></span>
+      <input id={id} type={visible ? "text" : "password"} value={valor} onChange={e => guardar(e.target.value)}
+        placeholder={ayuda ? "Ingresa una nueva contraseña" : "Vuelve a ingresar tu contraseña"}
+        autoComplete="new-password" aria-describedby={ayuda} required minLength={12} disabled={ocupado} />
+      <button type="button" aria-label={`${visible ? "Ocultar" : "Mostrar"} ${etiqueta.toLowerCase()}`}
+        aria-controls={id} disabled={ocupado} onClick={() => setVisible(!visible)}>
+        <Icon name={visible ? "login-eye" : "login-eye-off"} />
+      </button>
+    </div>
+  </>
+}
 
 function CampanaNotificaciones({ token, usuarioId, recibeAsignaciones, abrir }: {
   token: string; usuarioId: string; recibeAsignaciones: boolean; abrir: (t: IncidenciaReal) => void
@@ -119,7 +190,7 @@ export default function RealApp() {
   const [menu, setMenu] = useState(false)
   const [actualizado, setActualizado] = useState("")
   const [activando, setActivando] = useState(false)
-  const [cuentaActivada, setCuentaActivada] = useState(false)
+  const [avisoAcceso, setAvisoAcceso] = useState("")
   const [confirmacion, setConfirmacion] = useState("")
   const [recuperando, setRecuperando] = useState(false)
   const [solicitandoEnlace, setSolicitandoEnlace] = useState(false)
@@ -211,7 +282,7 @@ export default function RealApp() {
   async function ingresar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault()
     if (cargando) return
-    setCargando(true); setMensaje(""); setCuentaActivada(false)
+    setCargando(true); setMensaje(""); setAvisoAcceso("")
     const vigente = generacion.current
     try {
       const nueva = await iniciarSesionReal(correo, contrasena)
@@ -261,7 +332,7 @@ export default function RealApp() {
       await establecerClaveInvitada(sesion.access_token, contrasena)
       await cerrarSesionReal(sesion.access_token).catch(() => undefined)
       limpiarSesion()
-      setCuentaActivada(true)
+      setAvisoAcceso("Cuenta activada. Ya puedes iniciar sesión.")
     } catch (error) { setMensaje(errorTexto(error)) }
     finally { setCargando(false) }
   }
@@ -273,77 +344,101 @@ export default function RealApp() {
     setCargando(true); setMensaje("")
     try {
       await completarRecuperacionReal(sesion.access_token, identidadRecuperacion, contrasena)
-      limpiarSesion(); setMensaje("Auth confirmó la contraseña nueva. Inicia sesión nuevamente.")
+      limpiarSesion()
+      setAvisoAcceso("Contraseña actualizada. Ya puedes iniciar sesión.")
     } catch (error) { setMensaje(errorTexto(error)) }
     finally { setContrasena(""); setConfirmacion(""); setCargando(false) }
   }
 
-  if (recuperando) return <main className={`login-screen real-app${estiloFormularios}`}><section className="login-panel"><h2>Restablecer contraseña</h2><p>Se actualizará únicamente tu cuenta existente mediante Supabase Auth.</p><form onSubmit={recuperarClave}><label>Nueva contraseña<input type="password" autoComplete="new-password" minLength={12} required value={contrasena} disabled={cargando} onChange={e => setContrasena(e.target.value)} /></label><label>Confirmar contraseña<input type="password" autoComplete="new-password" minLength={12} required value={confirmacion} disabled={cargando} onChange={e => setConfirmacion(e.target.value)} /></label>{mensaje && <p role="alert" className="auth-error">{mensaje}</p>}<button className="primary" disabled={cargando || !identidadRecuperacion}>Guardar contraseña nueva</button><button type="button" className="outline" disabled={cargando} onClick={() => { limpiarSesion(); setMensaje("") }}>Volver al login</button></form></section></main>
+  async function solicitarEnlace(evento: FormEvent<HTMLFormElement>) {
+    evento.preventDefault()
+    if (cargando || !recuperacionHabilitada) return
+    setCargando(true); setMensaje(""); setAvisoAcceso("")
+    try { setAvisoAcceso(await solicitarRecuperacionReal(correo)) }
+    catch (error) { setMensaje(errorTexto(error)) }
+    finally { setCargando(false) }
+  }
 
-  if (solicitandoEnlace && !sesion) return <main className={`login-screen real-app${estiloFormularios}`}><section className="login-panel"><h2>Recuperar acceso</h2><p>Supabase Auth gestiona el enlace de recuperación; no se crean cuentas ni se modifican roles.</p>{!recuperacionHabilitada && <p role="status">El envío está deshabilitado hasta que el operador valide el correo y las redirecciones de Auth. Contacta a la jefatura.</p>}<form onSubmit={async e => { e.preventDefault(); if(cargando) return; setCargando(true); setMensaje(""); try { setMensaje(await solicitarRecuperacionReal(correo)) } catch(error) { setMensaje(errorTexto(error)) } finally { setCargando(false) } }}><label>Correo electrónico<input type="email" autoComplete="username" required value={correo} disabled={cargando} onChange={e => setCorreo(e.target.value)} /></label>{mensaje && <p role="status">{mensaje}</p>}<button className="primary" disabled={cargando || !recuperacionHabilitada}>Solicitar enlace</button><button type="button" className="outline" disabled={cargando} onClick={() => { setSolicitandoEnlace(false); setMensaje("") }}>Volver al login</button></form></section></main>
+  function volverALogin() {
+    if (recuperando || activando) limpiarSesion()
+    setSolicitandoEnlace(false); setMensaje(""); setAvisoAcceso("")
+  }
 
-  if (activando) return <main className={`login-screen real-app${estiloFormularios}`}><section className="login-panel"><div className="login-copy"><h2>Activa tu cuenta institucional</h2><p>Establece una contraseña para acceder con tu correo.</p></div><form onSubmit={activarCuenta}><label>Nueva contraseña<input type="password" autoComplete="new-password" required minLength={12} value={contrasena} onChange={(e) => setContrasena(e.target.value)} disabled={cargando} /></label><label>Confirmar contraseña<input type="password" autoComplete="new-password" required minLength={12} value={confirmacion} onChange={(e) => setConfirmacion(e.target.value)} disabled={cargando} /></label>{mensaje && <div className="auth-error" role="alert">{mensaje}</div>}<button className="primary login-submit" disabled={cargando || !perfil}>{cargando ? "Verificando…" : "Activar cuenta"}</button><button type="button" className="outline" disabled={cargando} onClick={() => { limpiarSesion(); setMensaje("") }}>Volver al login</button></form></section></main>
+  const volver = <button type="button" className="text-button real-access-back" disabled={cargando} onClick={volverALogin}>
+    <Icon name="arrow-left" /> Volver al inicio de sesión
+  </button>
+
+  if (recuperando || activando) {
+    const titulo = activando ? "Activa tu cuenta institucional" : "Restablecer contraseña"
+    return <PantallaAcceso titulo={titulo} icono={activando ? "user-add" : "login-lock"}
+      descripcion={activando ? "Crea la contraseña con la que accederás a Soporte TI." : "Elige una contraseña nueva para tu cuenta de Soporte TI."}>
+      <form onSubmit={activando ? activarCuenta : recuperarClave}>
+        <CampoClaveNueva id="access-new-password" etiqueta="Nueva contraseña" valor={contrasena}
+          guardar={setContrasena} ocupado={cargando} ayuda="access-password-help" />
+        <CampoClaveNueva id="access-confirm-password" etiqueta="Confirmar contraseña" valor={confirmacion}
+          guardar={setConfirmacion} ocupado={cargando} />
+        <div id="access-password-help" className="real-access-requirements">
+          <Icon name="login-shield" />
+          <div><strong>Requisitos de la contraseña</strong><ul>
+            <li><Icon name="check" />Mínimo 12 caracteres.</li>
+            <li><Icon name="check" />La confirmación debe coincidir.</li>
+          </ul></div>
+        </div>
+        {mensaje && <div className="auth-error" role="alert">{mensaje}</div>}
+        <div className="real-access-flow-actions">
+          <button type="submit" className="primary login-submit" disabled={cargando || (activando ? !perfil : !identidadRecuperacion)}>
+            <Icon name="check" /> {cargando ? "Procesando…" : activando ? "Activar cuenta" : "Guardar contraseña"}
+          </button>
+          {volver}
+        </div>
+      </form>
+    </PantallaAcceso>
+  }
+
+  if (solicitandoEnlace && !sesion) return <PantallaAcceso titulo="Recuperar acceso" icono="login-mail"
+    descripcion="Ingresa el correo asociado a tu cuenta institucional. Te enviaremos un enlace para restablecer tu contraseña.">
+    <form onSubmit={solicitarEnlace}>
+      <label htmlFor="access-recovery-email"><Icon name="login-mail" /> Correo electrónico institucional<span className="real-access-required" aria-hidden="true">*</span></label>
+      <div className="real-access-field">
+        <span aria-hidden="true"><Icon name="login-mail" /></span>
+        <input id="access-recovery-email" type="email" autoComplete="username" required disabled={cargando}
+          value={correo} onChange={e => setCorreo(e.target.value)} placeholder="correo@municipalidad.gob.pe" />
+      </div>
+      {!recuperacionHabilitada && <p className="real-access-help" role="status">La recuperación por correo no está disponible en este momento. Contacta a Soporte TI.</p>}
+      {avisoAcceso && <p className="real-access-success" role="status"><Icon name="check" />{avisoAcceso}</p>}
+      {mensaje && <div className="auth-error" role="alert">{mensaje}</div>}
+      <button type="submit" className="primary login-submit" disabled={cargando || !recuperacionHabilitada}>
+        <Icon name="send" /> {cargando ? "Enviando…" : "Enviar enlace de recuperación"}
+      </button>
+      <div className="real-access-request-back">{volver}</div>
+    </form>
+  </PantallaAcceso>
 
   if (!sesion || !perfil) return (
-    <main className="login-screen real-app real-access">
-      <header className="real-access-brand">
-        <div className="real-access-scene" aria-hidden="true">
-          <div className="real-access-photo" />
-          <div className="real-access-wave" />
+    <PantallaAcceso titulo="Bienvenido" descripcion="Ingresa con tu cuenta institucional para acceder al sistema de soporte TI.">
+      <form onSubmit={ingresar}>
+        <label htmlFor="real-access-email"><Icon name="login-mail" /> Correo electrónico</label>
+        <div className="real-access-field">
+          <span aria-hidden="true"><Icon name="login-mail" /></span>
+          <input id="real-access-email" type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} placeholder="correo@municipalidad.gob.pe" autoComplete="username" required disabled={cargando} />
         </div>
-        <div className="real-access-brand-content">
-          <div className="real-access-municipio">
-            <span className="real-access-seal" aria-hidden="true"><img src={escudoGrocioPrado} alt="" /></span>
-            <div>Municipalidad Distrital de<strong>Grocio Prado</strong></div>
-          </div>
-          <p className="real-access-chip"><Icon name="login-monitor" /> Soporte TI</p>
-          <h1>Sistema de Gestión<br className="real-access-title-break" /> de Incidencias</h1>
-          <p className="real-access-intro">Registro, seguimiento y atención de solicitudes de soporte tecnológico.</p>
-          <ul className="real-access-features">
-            <li><span><Icon name="login-ticket" /></span>Registra<br /> incidencias</li>
-            <li><span><Icon name="users" /></span>Seguimiento<br /> de atención</li>
-            <li><span><Icon name="login-bars" /></span>Reportes<br /> e indicadores</li>
-          </ul>
+        <label htmlFor="real-access-password"><Icon name="login-lock" /> Contraseña</label>
+        <div className="password-field real-access-field">
+          <span aria-hidden="true"><Icon name="login-lock" /></span>
+          <input id="real-access-password" type={mostrarClave ? "text" : "password"} value={contrasena} onChange={(e) => setContrasena(e.target.value)} placeholder="Ingresa tu contraseña" autoComplete="current-password" required disabled={cargando} />
+          <button type="button" aria-label={mostrarClave ? "Ocultar contraseña" : "Mostrar contraseña"} aria-controls="real-access-password" onClick={() => setMostrarClave(!mostrarClave)}>
+            <Icon name={mostrarClave ? "login-eye" : "login-eye-off"} />
+          </button>
         </div>
-      </header>
-      <div className="real-access-card-area">
-        <section className="login-panel" aria-labelledby="real-access-title">
-          <div className="login-copy">
-            <div className="real-access-support-icon" aria-hidden="true">
-              <span className="real-access-laptop"><Icon name="login-headset" /></span>
-            </div>
-            <h2 id="real-access-title">Bienvenido</h2>
-            <p>Ingresa con tu cuenta institucional para acceder al sistema de soporte TI.</p>
-          </div>
-          <form onSubmit={ingresar}>
-            <label htmlFor="real-access-email"><Icon name="login-mail" /> Correo electrónico</label>
-            <div className="real-access-field">
-              <span aria-hidden="true"><Icon name="login-mail" /></span>
-              <input id="real-access-email" type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} placeholder="correo@municipalidad.gob.pe" autoComplete="username" required disabled={cargando} />
-            </div>
-            <label htmlFor="real-access-password"><Icon name="login-lock" /> Contraseña</label>
-            <div className="password-field real-access-field">
-              <span aria-hidden="true"><Icon name="login-lock" /></span>
-              <input id="real-access-password" type={mostrarClave ? "text" : "password"} value={contrasena} onChange={(e) => setContrasena(e.target.value)} placeholder="Ingresa tu contraseña" autoComplete="current-password" required disabled={cargando} />
-              <button type="button" aria-label={mostrarClave ? "Ocultar contraseña" : "Mostrar contraseña"} aria-controls="real-access-password" onClick={() => setMostrarClave(!mostrarClave)}>
-                <Icon name={mostrarClave ? "login-eye" : "login-eye-off"} />
-              </button>
-            </div>
-            <div className="real-access-assistance">
-              <button type="button" className="text-button" aria-describedby={recuperacionHabilitada ? undefined : "real-access-recovery-note"} onClick={() => { setSolicitandoEnlace(true); setMensaje("") }}>¿Olvidaste tu contraseña?</button>
-              {!recuperacionHabilitada && <span id="real-access-recovery-note" className="real-access-visually-hidden">Recuperación por correo pendiente de configurar y validar con el operador.</span>}
-            </div>
-            {cuentaActivada && <p role="status">Cuenta activada. Ya puedes iniciar sesión.</p>}
-            {mensaje && <div className="auth-error" role="alert">{mensaje}</div>}
-            <button type="submit" className="primary login-submit" disabled={cargando}><Icon name="login-enter" /> {cargando ? "Verificando acceso…" : "Iniciar sesión"}</button>
-          </form>
-          <footer className="real-access-note">
-            <Icon name="login-shield" />
-            <p>Acceso exclusivo para personal autorizado<br className="real-access-title-break" /> de la Municipalidad Distrital de Grocio Prado.</p>
-          </footer>
-        </section>
-      </div>
-    </main>
+        <div className="real-access-assistance">
+          <button type="button" className="text-button" aria-describedby={recuperacionHabilitada ? undefined : "real-access-recovery-note"} onClick={() => { setSolicitandoEnlace(true); setMensaje(""); setAvisoAcceso(""); setContrasena(""); setMostrarClave(false) }}>¿Olvidaste tu contraseña?</button>
+          {!recuperacionHabilitada && <span id="real-access-recovery-note" className="real-access-visually-hidden">Recuperación por correo pendiente de configurar y validar con el operador.</span>}
+        </div>
+        {avisoAcceso && <p className="real-access-success" role="status"><Icon name="check" />{avisoAcceso}</p>}
+        {mensaje && <div className="auth-error" role="alert">{mensaje}</div>}
+        <button type="submit" className="primary login-submit" disabled={cargando}><Icon name="login-enter" /> {cargando ? "Verificando acceso…" : "Iniciar sesión"}</button>
+      </form>
+    </PantallaAcceso>
   )
 
   const jefe = perfil.rol === "JEFE"

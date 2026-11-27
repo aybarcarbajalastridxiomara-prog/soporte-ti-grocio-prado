@@ -6,18 +6,17 @@ type Area = { id: string; nombre: string; activo: boolean }
 type Configuracion = { permisos_verificados?: boolean; permisos_alta_verificados?: boolean; edicion_habilitada: boolean; invitaciones_habilitadas: boolean; gestion_ampliada?: boolean; motivos: string[] }
 type Persona = PerfilReal & { alta_controlada?: boolean; archivado?: boolean; correo?: string | null; activacion?: "ACTIVADA" | "PENDIENTE" | "DESCONOCIDA" }
 const acciones = {
-  reenviar: "Reenviar invitación de activación", recuperar: "Enviar recuperación de contraseña",
+  reenviar: "Reenviar invitación de activación",
   habilitar: "Rehabilitar usuario", deshabilitar: "Deshabilitar usuario",
   restaurar: "Restaurar sin habilitar", restaurar_habilitado: "Restaurar y habilitar", eliminar: "Eliminar definitivamente",
 }
 type Accion = keyof typeof acciones
 const iconosAccion: Record<Accion, string> = {
-  reenviar: "login-mail", recuperar: "login-mail", habilitar: "user-add",
+  reenviar: "login-mail", habilitar: "user-add",
   deshabilitar: "login-lock", restaurar: "refresh", restaurar_habilitado: "user-add", eliminar: "trash",
 }
 const advertencias: Record<Accion, string> = {
   reenviar: "Se enviará un nuevo enlace al correo registrado.",
-  recuperar: "Se enviará un enlace de recuperación al correo registrado.",
   habilitar: "Se permitirá el acceso al sistema según el rol actual.",
   deshabilitar: "Se bloqueará su acceso y dejará de estar disponible para nuevas asignaciones.",
   restaurar: "El perfil volverá al directorio y su acceso seguirá deshabilitado.",
@@ -58,9 +57,8 @@ function MenuPerfil({ persona, propio, configuracion, abrir, pedirAccion }: {
   const ampliada = configuracion?.gestion_ampliada === true
   const autorizado = configuracion?.edicion_habilitada === true
   const editar = autorizado && !persona.archivado
-  const enlace = persona.activacion === "ACTIVADA" ? "recuperar" : "reenviar"
   const altaControlada = persona.alta_controlada && configuracion?.invitaciones_habilitadas
-  const mostrarEnlace = (autorizado || altaControlada) && !persona.archivado
+  const mostrarEnlace = (autorizado || altaControlada) && !persona.archivado && persona.activacion !== "ACTIVADA"
   const administrar = autorizado && !propio
   const requiereMigracion = "Disponible cuando se aplique la migración de Gestión de usuarios."
   function elegir(accion: () => void) {
@@ -90,7 +88,7 @@ function MenuPerfil({ persona, propio, configuracion, abrir, pedirAccion }: {
       <div className="admin-menu-group">
         <button type="button" onClick={() => elegir(() => abrir(persona, true))}><Icon name="login-eye" />Ver perfil</button>
         {editar && <button className="admin-menu-editar" type="button" onClick={() => elegir(() => abrir(persona))}><Icon name="tool" />Editar perfil</button>}
-        {mostrarEnlace && opcion(enlace, altaControlada ? undefined : !ampliada ? requiereMigracion : !configuracion?.invitaciones_habilitadas ? "El envío de correos está restringido." : !persona.correo ? "La cuenta no tiene correo registrado en Supabase Auth." : undefined)}
+        {mostrarEnlace && opcion("reenviar", altaControlada ? undefined : !ampliada ? requiereMigracion : !configuracion?.invitaciones_habilitadas ? "El envío de correos está restringido." : !persona.correo ? "La cuenta no tiene correo registrado en Supabase Auth." : undefined)}
       </div>
       {administrar && <>
         <div className="admin-menu-group">

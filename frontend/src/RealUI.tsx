@@ -15,6 +15,8 @@ export function Icon({ name }: { name: string }) {
     "document-add": "M6 3h8l4 4v14H6zM14 3v5h4M12 11v7m-3.5-3.5h7",
     plus: "M12 5v14M5 12h14",
     arrow: "m9 18 6-6-6-6",
+    "arrow-left": "M20 12H4m7-7-7 7 7 7",
+    send: "m22 2-7 20-4-9-9-4 20-7ZM11 13 22 2",
     check: "m5 12 4 4L19 6",
     clock: "M12 6v6l4 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0",
     refresh: "M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 14 6M4 12a8 8 0 0 0 14 6",

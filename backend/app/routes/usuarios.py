@@ -89,7 +89,7 @@ class PerfilAdministrado(MiPerfil):
 
 class AccionAdministrativa(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    accion: Literal["habilitar", "deshabilitar", "archivar", "restaurar", "restaurar_habilitado", "eliminar", "reenviar", "recuperar"]
+    accion: Literal["habilitar", "deshabilitar", "archivar", "restaurar", "restaurar_habilitado", "eliminar", "reenviar"]
 
 
 class PerfilActualizar(BaseModel):
@@ -563,18 +563,15 @@ def reenviar_alta_controlada(usuario_id: UUID, datos: ReenvioInvitacion,
     return {"mensaje": "Auth aceptó el reenvío. Confirma la recepción con el destinatario."}
 
 
-def reenviar_acceso(db: Session, jefe: Usuario, usuario: Usuario, accion: str) -> dict:
+def reenviar_acceso(db: Session, jefe: Usuario, usuario: Usuario) -> dict:
     configuracion = estado_administracion()
     if not configuracion["invitaciones_habilitadas"]:
         raise HTTPException(503, " ".join(configuracion["motivos"]))
     cuenta = next((fila for fila in directorio_auth(db, jefe) if fila["id"] == usuario.id), None)
     if not cuenta or not cuenta["correo"]:
         raise HTTPException(409, "El perfil no tiene un correo de Auth disponible.")
-    activado = cuenta["activado"]
-    if accion == "reenviar" and activado:
+    if cuenta["activado"]:
         raise HTTPException(409, "Este perfil no tiene una invitación pendiente. Actualiza el directorio.")
-    if accion == "recuperar" and not activado:
-        raise HTTPException(409, "La cuenta todavía no está activada. Actualiza el directorio.")
 
     ahora = datetime.now(timezone.utc)
     intentos_recientes = select(AuditoriaAdministrativa.id).where(
@@ -592,13 +589,13 @@ def reenviar_acceso(db: Session, jefe: Usuario, usuario: Usuario, accion: str) -
     invitacion_reciente = db.scalar(select(Usuario.id).where(
         Usuario.id == usuario.id, Usuario.fecha_creacion > ahora - timedelta(seconds=60),
     ))
-    if accion == "reenviar" and invitacion_reciente:
+    if invitacion_reciente:
         raise HTTPException(429, "Espera 60 segundos desde la invitación original.")
 
     usuario_id, jefe_id = usuario.id, jefe.id
     db.add(AuditoriaAdministrativa(
         actor_id=jefe_id, usuario_id=usuario_id,
-        accion="SOLICITAR_REENVIO" if accion == "reenviar" else "SOLICITAR_RECUPERACION",
+        accion="SOLICITAR_REENVIO",
         anterior={}, nuevo={},
     ))
     # Reserva persistente incluso ante un error o una respuesta incierta del proveedor.
@@ -610,7 +607,7 @@ def reenviar_acceso(db: Session, jefe: Usuario, usuario: Usuario, accion: str) -
     if vigente != cuenta:
         raise HTTPException(409, "El estado de la cuenta cambió. Actualiza el directorio.")
 
-    if accion == "recuperar" or cuenta["confirmado"] or not cuenta["invitado"]:
+    if cuenta["confirmado"] or not cuenta["invitado"]:
         # Un invitado que abrió el primer enlace puede haber confirmado su correo
         # sin establecer su contraseña. Auth rechaza un nuevo /invite en ese caso.
         recuperar_en_supabase(cuenta["correo"])
@@ -646,10 +643,10 @@ def administrar_usuario(
     usuario = bloquear_perfil(db, jefe, usuario_id)
     archivado = perfil_archivado(db, usuario_id)
     accion = datos.accion
-    if accion in ("reenviar", "recuperar"):
+    if accion == "reenviar":
         if archivado:
             raise HTTPException(409, "Restaura el perfil antes de enviar un enlace de acceso.")
-        return reenviar_acceso(db, jefe, usuario, accion)
+        return reenviar_acceso(db, jefe, usuario)
     if usuario_id == jefe.id:
         raise HTTPException(409, "No puedes cambiar el acceso ni retirar tu propio perfil.")
     if accion != "eliminar" and archivado != (accion in ("restaurar", "restaurar_habilitado")):
