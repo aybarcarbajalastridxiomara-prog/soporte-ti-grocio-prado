@@ -1,4 +1,4 @@
--- Solo QA vmtvttlmnqcucotskceh. Revisión/aplicación MANUAL; no crea buckets.
+-- Solo QA2 vmtvttlmnqcucotskceh. Revisión/aplicación MANUAL; no crea buckets.
 -- Defensa explícita: el navegador no accede directamente al bucket QA.
 -- FastAPI aplica los permisos por incidencia; service_role permanece solo en servidor.
 BEGIN;
@@ -8,9 +8,19 @@ DECLARE
     v_p record;
     v_condicion text := '(bucket_id <> ''incidencias-qa''::text)';
 BEGIN
-    IF obj_description(to_regclass('public.areas'), 'pg_class') IS DISTINCT FROM 'grocio.qa_project=vmtvttlmnqcucotskceh'
-       OR current_database()<>'postgres' THEN
+    IF current_database()<>'postgres' OR to_regclass('qa_control.entorno') IS NULL THEN
         RAISE EXCEPTION 'Destino QA no acreditado: sin cambios';
+    END IF;
+    IF (SELECT count(*) FROM qa_control.entorno)<>1 OR NOT EXISTS(
+        SELECT 1 FROM qa_control.entorno WHERE singleton
+          AND project_ref='vmtvttlmnqcucotskceh'
+          AND project_url='https://vmtvttlmnqcucotskceh.supabase.co'
+          AND project_name='soporte-ti-grocio-qa-2' AND database_name=current_database()
+          AND format_version=1 AND created_by='postgres')
+       OR NOT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+          WHERE n.nspname='qa_control' AND c.relname='entorno' AND c.relrowsecurity
+            AND pg_get_userbyid(c.relowner)='postgres' AND pg_get_userbyid(n.nspowner)='postgres') THEN
+        RAISE EXCEPTION 'Control privado QA2 no acreditado: sin cambios';
     END IF;
     IF NOT EXISTS(SELECT 1 FROM storage.buckets WHERE id='incidencias-qa' AND NOT public
         AND file_size_limit BETWEEN 4000000 AND 5242880

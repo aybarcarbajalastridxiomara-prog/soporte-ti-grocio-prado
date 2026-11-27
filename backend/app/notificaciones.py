@@ -7,6 +7,7 @@ import json,re
 from html import escape
 from datetime import datetime,timezone
 from uuid import UUID
+from dataclasses import dataclass
 from sqlalchemy import text
 from app.config import get_settings
 from app.servicios_privados import origen_supabase,peticion_privada,cabeceras_supabase
@@ -69,9 +70,38 @@ def contenido_evento(row):
             pass  # Evento legado no estructurado: aviso sin inventar su valor.
     return contenido
 
-def preparar(db,desde,limite=100):
+@dataclass(frozen=True)
+class AlcanceNotificaciones:
+    """Límite adicional para un worker de QA; nunca concede permisos SQL."""
+    usuarios: frozenset
+    incidencias: frozenset
+    desde: datetime
+
+    def __post_init__(self):
+        if (not 1 <= len(self.usuarios) <= 6 or not 1 <= len(self.incidencias) <= 20
+                or self.desde.tzinfo is None or self.desde.utcoffset() is None):
+            raise ValueError('Alcance QA explícito, acotado y con zona horaria requerido.')
+        object.__setattr__(self,'usuarios',frozenset(UUID(str(x)) for x in self.usuarios))
+        object.__setattr__(self,'incidencias',frozenset(UUID(str(x)) for x in self.incidencias))
+
+    def filtros(self, evento='h', incidencia='i', destinatario=None):
+        values={'qa_desde':self.desde}
+        def lista(prefix,items):
+            keys=[]
+            for pos,value in enumerate(sorted(items,key=str)):
+                key=f'{prefix}{pos}';values[key]=value;keys.append(':'+key)
+            return ','.join(keys)
+        tickets=lista('qa_i',self.incidencias)
+        usuarios=lista('qa_u',self.usuarios)
+        sql=f' AND {evento}.fecha_registro>=:qa_desde AND {incidencia}.id IN ({tickets}) AND {incidencia}.reportante_id IN ({usuarios})'
+        if destinatario:sql+=f' AND {destinatario}.destinatario_id IN ({usuarios})'
+        return sql,values
+
+
+def preparar(db,desde,limite=100,*,alcance=None):
     """Solo eventos posteriores al corte explícito. UNIQUE evita duplicados entre workers."""
     if desde.tzinfo is None or not 1<=limite<=1000:raise ValueError('Corte con zona horaria y límite 1..1000 requeridos.')
+    filtro,params=alcance.filtros() if alcance else ('',{})
     rows=db.execute(text("""SELECT h.id,
         CASE WHEN h.accion='INTERVENCION' THEN 'SOLUCION' ELSE h.accion END AS accion,
         h.descripcion,h.fecha_registro,i.id AS ticket,i.codigo,i.asunto,i.reportante_id,
@@ -85,7 +115,7 @@ def preparar(db,desde,limite=100):
             AND j.fecha_registro=h.fecha_registro AND j.es_solucion_final
             AND COALESCE((to_jsonb(j)->>'ciclo_atencion')::int,1)=COALESCE((to_jsonb(h)->>'ciclo_atencion')::int,1))=1)
         AND NOT EXISTS(SELECT 1 FROM public.notificaciones_salida n WHERE n.evento_id=h.id)
-        ORDER BY h.fecha_registro,h.id LIMIT :limite"""),{'desde':desde,'limite':limite}).mappings().all()
+        """+filtro+" ORDER BY h.fecha_registro,h.id LIMIT :limite"),{'desde':desde,'limite':limite,**params}).mappings().all()
     created=0
     for row in rows:
         recipients={row['reportante_id']}
@@ -98,6 +128,7 @@ def preparar(db,desde,limite=100):
                 AND COALESCE((to_jsonb(asignaciones)->>'ciclo_atencion')::int,1)=:ciclo
                 ORDER BY fecha_asignacion DESC,id DESC LIMIT 1"""),{'id':row['ticket'],'fecha':row['fecha_registro'],'ciclo':row['ciclo']}).scalar_one_or_none()
             if assigned:recipients.add(assigned)
+        if alcance:recipients.intersection_update(alcance.usuarios)
         contenido=json.dumps(contenido_evento(row),ensure_ascii=False)
         for recipient in recipients:
             created+=db.execute(text("""INSERT INTO public.notificaciones_salida(evento_id,destinatario_id,contenido)
@@ -150,15 +181,24 @@ def enviar_brevo(id_,correo,contenido):
     if code>=500:return 'incierto'
     return 'rechazado'
 
-def procesar_uno(db,*,resolver=resolver_correo,enviar=enviar_brevo):
+def procesar_uno(db,*,resolver=resolver_correo,enviar=enviar_brevo,alcance=None):
     s=get_settings()
     if not s.brevo_habilitado:raise HTTPException(503,'Notificaciones deshabilitadas.')
     # Una caída entre envío y confirmación nunca provoca reenvío ciego.
-    db.execute(text("UPDATE public.notificaciones_salida SET estado='incierto',error_codigo='CONFIRMACION_PENDIENTE' WHERE estado='enviando' AND fecha_intento<now()-interval '5 minutes'"))
+    filtro,params=alcance.filtros(destinatario='n') if alcance else ('',{})
+    if alcance:
+        db.execute(text("""UPDATE public.notificaciones_salida n
+            SET estado='incierto',error_codigo='CONFIRMACION_PENDIENTE'
+            FROM public.historial_incidencias h JOIN public.incidencias i ON i.id=h.incidencia_id
+            WHERE n.evento_id=h.id AND n.estado='enviando'
+              AND n.fecha_intento<now()-interval '5 minutes'"""+filtro),params)
+    else:
+        db.execute(text("UPDATE public.notificaciones_salida SET estado='incierto',error_codigo='CONFIRMACION_PENDIENTE' WHERE estado='enviando' AND fecha_intento<now()-interval '5 minutes'"))
+    joins=' JOIN public.historial_incidencias h ON h.id=n.evento_id JOIN public.incidencias i ON i.id=h.incidencia_id' if alcance else ''
     row=db.execute(text("""SELECT n.* FROM public.notificaciones_salida n JOIN public.usuarios u ON u.id=n.destinatario_id
-        WHERE n.estado='pendiente' AND n.intentos<3 AND u.habilitado
+        """+joins+""" WHERE n.estado='pendiente' AND n.intentos<3 AND u.habilitado
         AND (n.fecha_intento IS NULL OR n.fecha_intento<now()-interval '1 minute')
-        ORDER BY n.fecha_creacion,n.id FOR UPDATE OF n SKIP LOCKED LIMIT 1""")).mappings().one_or_none()
+        """+filtro+" ORDER BY n.fecha_creacion,n.id FOR UPDATE OF n SKIP LOCKED LIMIT 1"),params).mappings().one_or_none()
     if not row:db.commit();return None
     id_=row['id'];db.execute(text("UPDATE public.notificaciones_salida SET estado='enviando',intentos=intentos+1,fecha_intento=now(),error_codigo=NULL WHERE id=:id"),{'id':id_});db.commit()
     try:

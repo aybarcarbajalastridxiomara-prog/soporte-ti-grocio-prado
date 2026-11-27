@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 REPO=Path(__file__).resolve().parents[2]
 PROJECT='vmtvttlmnqcucotskceh'
 ORIGIN=f'https://{PROJECT}.supabase.co'
-DATABASE_MARKER=f'grocio.qa_project={PROJECT}'
+PROJECT_NAME='soporte-ti-grocio-qa-2'
 BUCKET='incidencias-qa'
 TABLES={'areas','usuarios','incidencias','asignaciones','intervenciones','verificaciones',
     'evidencias','historial_incidencias','notificaciones_salida','auditoria_administrativa'}
@@ -67,6 +67,54 @@ def inventario():
         'migraciones_ordenadas':[{'archivo':'database/'+f,'sha256':hashlib.sha256((REPO/'database'/f).read_bytes()).hexdigest()} for f in MIGRATIONS],
         'nota':'01/02/03/04 son de aplicación única sobre un QA nuevo; 05 es idempotente. Este preflight no ejecuta SQL de escritura.'}
 
+def verificar_marca(con):
+    """Marca secundaria privada; la identidad externa se fija por URL/DSN/TLS.
+
+    No modifica parámetros, objetos ni filas. La cuenta API solo lee la marca.
+    """
+    from sqlalchemy import text
+    driver=con.connection.driver_connection
+    info=driver.info
+    direct=info.host==f'db.{PROJECT}.supabase.co' and info.user=='soporte_ti_api' and int(info.port)==5432
+    pooler=bool(re.fullmatch(r'aws-\d+-[a-z0-9-]+\.pooler\.supabase\.com',info.host or '')) and info.user==f'soporte_ti_api.{PROJECT}' and int(info.port) in (5432,6543)
+    if not driver.pgconn.ssl_in_use or info.dbname!='postgres' or not (direct or pooler):
+        raise QANoPreparado('Destino de conexión o TLS QA2 no confirmado; sin mostrar sus valores.')
+    identity=con.execute(text(
+        "SELECT current_database(),current_user,current_setting('transaction_read_only')")).one()
+    if tuple(identity)!=('postgres','soporte_ti_api','on'):
+        raise QANoPreparado('Identidad de sesión QA2 no confirmada.')
+    control=con.execute(text("""SELECT pg_get_userbyid(n.nspowner),pg_get_userbyid(c.relowner),
+        c.relkind,c.relrowsecurity,c.relforcerowsecurity FROM pg_class c
+        JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname='qa_control' AND c.relname='entorno'""")).one_or_none()
+    if control is None or tuple(control)!=('postgres','postgres','r',True,False):
+        raise QANoPreparado('Falta el control privado QA2 o su propietario/RLS no coincide.')
+    rows=con.execute(text("""SELECT project_ref,project_url,project_name,database_name,
+        format_version,created_by FROM qa_control.entorno""")).all()
+    expected=(PROJECT,ORIGIN,PROJECT_NAME,'postgres',1,'postgres')
+    if len(rows)!=1 or tuple(rows[0])!=expected:
+        raise QANoPreparado('Marca QA2 ausente, duplicada o distinta; sin cambios.')
+    forbidden=con.execute(text("""SELECT
+        has_schema_privilege(current_user,'qa_control','CREATE'),
+        has_table_privilege(current_user,'qa_control.entorno','INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'),
+        EXISTS(SELECT 1 FROM pg_roles r WHERE r.rolname IN ('anon','authenticated','service_role')
+          AND (has_schema_privilege(r.oid,'qa_control','USAGE,CREATE')
+            OR has_table_privilege(r.oid,'qa_control.entorno','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'))),
+        EXISTS(SELECT 1 FROM pg_auth_members m JOIN pg_roles r ON r.oid=m.member
+          WHERE m.roleid=(SELECT oid FROM pg_roles WHERE rolname=current_user)
+            AND r.rolname<>'postgres'),
+        has_schema_privilege(current_user,'public','CREATE'),
+        has_database_privilege(current_user,current_database(),'CREATE')""")).one()
+    if any(forbidden):
+        raise QANoPreparado('Control QA2 con acceso de escritura o cliente no permitido.')
+    policies=con.execute(text("""SELECT cmd,roles,qual,with_check,permissive FROM pg_policies
+        WHERE schemaname='qa_control' AND tablename='entorno'""")).all()
+    if len(policies)!=1:
+        raise QANoPreparado('Políticas de control QA2 distintas de la revisión.')
+    p=policies[0]
+    if p[0]!='SELECT' or set(p[1])!={'soporte_ti_api'} or p[2]!='singleton' or p[3] is not None or p[4]!='PERMISSIVE':
+        raise QANoPreparado('Política de control QA2 distinta de la revisión.')
+
 def verificar_remoto(config):
     # Red exclusivamente hacia el proyecto pinneado y su conexión PostgreSQL QA.
     # Todas las solicitudes HTTP son GET. Nunca se siguen redirecciones ni proxies.
@@ -91,13 +139,7 @@ def verificar_remoto(config):
     try:
         with engine.connect() as con:
             con.exec_driver_sql("SET TRANSACTION READ ONLY")
-            row=con.execute(text(
-                "SELECT current_database(), current_user, "
-                "obj_description(to_regclass('public.areas'), 'pg_class'), "
-                "current_setting('transaction_read_only')"
-            )).one()
-            if tuple(row)!=('postgres','soporte_ti_api',DATABASE_MARKER,'on'):
-                raise QANoPreparado('Identidad o marca PostgreSQL QA no confirmada.')
+            verificar_marca(con)
             flags=con.execute(text('SELECT rolsuper,rolbypassrls,rolcreaterole,rolcreatedb,rolinherit,rolreplication FROM pg_roles WHERE rolname=current_user')).one()
             if any(flags):raise QANoPreparado('El rol API QA tiene privilegios excesivos.')
             if con.execute(text('SELECT count(*) FROM pg_auth_members WHERE member=(SELECT oid FROM pg_roles WHERE rolname=current_user)')).scalar_one():
