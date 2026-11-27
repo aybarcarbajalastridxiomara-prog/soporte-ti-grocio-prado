@@ -2,6 +2,7 @@
 from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
+from textwrap import wrap
 from xml.sax.saxutils import escape
 
 from app.reportes import LIMA, MUNICIPALIDAD
@@ -39,56 +40,212 @@ def valores_fila(fila: dict) -> list:
 
 def generar_excel(datos: dict) -> bytes:
     from openpyxl import Workbook
+    from openpyxl.chart import BarChart, DoughnutChart, Reference
+    from openpyxl.chart.data_source import AxDataSource, NumData, NumVal, StrData, StrRef, StrVal
+    from openpyxl.chart.label import DataLabelList
+    from openpyxl.chart.series import DataPoint
+    from openpyxl.drawing.image import Image
+    from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, OneCellAnchor
+    from openpyxl.drawing.xdr import XDRPositiveSize2D
     from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+    from openpyxl.utils.units import pixels_to_EMU
 
     libro = Workbook()
     resumen = libro.active
     resumen.title = "Resumen"
-    resumen.append([MUNICIPALIDAD])
-    resumen.append(["Reporte institucional de incidencias"])
-    resumen.append(["Período (fecha de registro)", datos["periodo"]])
-    resumen.append(["Generado (America/Lima)", fecha_local(datos["fecha_generacion"])])
-    resumen.append(["Alcance", "Estados vigentes de las incidencias registradas en el período; prioridad oficial"])
-    resumen.append([])
-    for etiqueta, campo in [("Total", "total"), ("Pendientes", "pendientes"), ("En revisión", "en_revision"), ("Cerradas", "cerradas")]:
-        resumen.append([etiqueta, datos["resumen"][campo]])
-    for clave, titulo in [("areas", "Por área municipal"), ("prioridades", "Por prioridad oficial"), ("responsables", "Por responsable actual o de cierre")]:
-        resumen.append([])
-        resumen.append([titulo, "Total"])
-        for grupo in datos["desgloses"][clave]:
-            resumen.append([grupo["nombre"] or "No disponible", grupo["total"]])
     filtros = libro.create_sheet("Filtros")
-    filtros.append(["Filtro", "Valor aplicado"])
-    for etiqueta, valor in datos["filtros_aplicados"].items():
-        filtros.append([etiqueta, valor])
-    filtros.append(["Zona horaria", "America/Lima"])
-    filtros.append(["Generado", fecha_local(datos["fecha_generacion"])])
     incidencias = libro.create_sheet("Incidencias")
-    incidencias.append(CABECERAS)
-    for fila in datos["incidencias"]:
-        incidencias.append(valores_fila(fila))
-    incidencias.freeze_panes = "A2"
-    incidencias.auto_filter.ref = incidencias.dimensions
-    anchos = [24, 65, 30, 23, 40, 20, 36]
-    for columna, ancho in zip("ABCDEFG", anchos):
-        incidencias.column_dimensions[columna].width = ancho
-    for celda in incidencias["D"][1:]:
-        celda.number_format = "dd/mm/yyyy hh:mm"
-    resumen.column_dimensions["A"].width = 48
-    resumen.column_dimensions["B"].width = 90
-    filtros.column_dimensions["A"].width = 38
-    filtros.column_dimensions["B"].width = 90
-    for hoja in libro:
-        for fila in hoja:
-            for celda in fila:
-                # Literal incluso si el asunto/nombre comienza con =, +, -, @ o un error Excel.
-                if isinstance(celda.value, str):
-                    celda.data_type = "s"
-                celda.alignment = Alignment(vertical="top", wrap_text=True)
-        for celda in hoja[1]:
-            celda.font = Font(bold=True, color="FFFFFF")
-            celda.fill = PatternFill("solid", fgColor="15314B")
+    azul, tinta, claro, blanco = "103858", "102D4E", "DBEAF8", "FFFFFF"
+    fecha = fecha_local(datos["fecha_generacion"])
+    periodo = datos["periodo"]
+    if periodo == "Sin límite inicial al Sin límite final":
+        periodo = "Sin límite de fechas"
+    total = datos["resumen"]["total"]
+    estados = [
+        ("Pendientes", "pendientes", "FFF4D8", "835200", "E9A700"),
+        ("En revisión", "en_revision", "E4F1FD", "13588E", "2778C4"),
+        ("Cerradas", "cerradas", "E6F4E8", "22723B", "2D9658"),
+    ]
+
+    def estilo(celda, fondo=None, color=tinta, negrita=False, tamano=11, centrado=False):
+        celda.font = Font(name="Calibri", size=tamano, bold=negrita, color=color)
+        if fondo:
+            celda.fill = PatternFill("solid", fgColor=fondo)
+        celda.alignment = Alignment(horizontal="center" if centrado else "left",
+                                    vertical="center", wrap_text=True, indent=0 if centrado else 1)
+        # Los datos del reporte se escriben como texto literal, incluso si parecen fórmulas.
+        if isinstance(celda.value, str):
+            celda.data_type = "s"
+
+    def bloque(hoja, rango, valor, fondo=None, **formato):
+        hoja.merge_cells(rango)
+        celda = hoja[rango.split(":")[0]]
+        celda.value = valor
+        estilo(celda, fondo, **formato)
+        return celda
+
+    def cabecera(hoja, ultima, titulo, subtitulo, inicio_texto="B", dato_derecha=None):
         hoja.sheet_view.showGridLines = False
+        # Las celdas bajo el escudo distinguen la marca del texto institucional.
+        bloque(hoja, f"A1:{inicio_texto}3", None, azul)
+        inicio = get_column_letter(hoja[inicio_texto + "1"].column + 1)
+        bloque(hoja, f"{inicio}1:{ultima}2", MUNICIPALIDAD.upper(), azul, color=blanco, negrita=True, tamano=19)
+        bloque(hoja, f"{inicio}3:{ultima}3", "Unidad de Racionalización e Informática", azul, color=blanco, tamano=13)
+        escudo = Path(__file__).with_name("escudo_reporte.png")
+        if escudo.is_file():
+            imagen = Image(BytesIO(escudo.read_bytes()))
+            altura = 64
+            ancho = round(imagen.width * altura / imagen.height)
+            imagen.anchor = OneCellAnchor(
+                _from=AnchorMarker(col=0, row=0, colOff=pixels_to_EMU(24), rowOff=pixels_to_EMU(6)),
+                ext=XDRPositiveSize2D(pixels_to_EMU(ancho), pixels_to_EMU(altura)),
+            )
+            hoja.add_image(imagen)
+        for indice in (1, 2, 3):
+            hoja.row_dimensions[indice].height = 19
+        bloque(hoja, f"A4:{ultima}4", titulo, color=azul, negrita=True, tamano=18)
+        hoja.row_dimensions[4].height = 32
+        bloque(hoja, f"A5:{'F' if dato_derecha else ultima}5", subtitulo, claro, negrita=True)
+        if dato_derecha:
+            bloque(hoja, f"G5:{ultima}5", dato_derecha, claro, negrita=True)
+        hoja.row_dimensions[5].height = 24
+
+    for hoja in (resumen, filtros):
+        for indice in range(1, 12):
+            hoja.column_dimensions[get_column_letter(indice)].width = 14 if indice != 6 else 3
+    cabecera(resumen, "K", "REPORTE DE GESTIÓN DE INCIDENCIAS", f"Período: {periodo}", dato_derecha=f"Generado: {fecha}")
+    resumen.row_dimensions[7].height = 22
+    resumen.row_dimensions[8].height = 34
+    tarjetas = [("Total de incidencias", "total", "E4F1FD", azul, None), *estados]
+    for (primera, ultima), (nombre, clave, fondo, color, _) in zip(("AC", "DE", "GI", "JK"), tarjetas):
+        bloque(resumen, f"{primera}7:{ultima}7", nombre, fondo, color=color, negrita=True, centrado=True)
+        bloque(resumen, f"{primera}8:{ultima}8", datos["resumen"][clave], fondo, color=color,
+               negrita=True, tamano=23, centrado=True)
+
+    responsables = datos["desgloses"]["responsables"]
+    for indice, (nombre, clave, *_) in enumerate(estados, 1):
+        cantidad = datos["resumen"][clave]
+        resumen.cell(indice, 14, f"{nombre} ({cantidad})")
+        resumen.cell(indice, 15, cantidad)
+    principales = sorted(responsables, key=lambda grupo: -grupo["total"])[:5]
+    for indice, grupo in enumerate(principales, 1):
+        resumen.cell(indice, 16, grupo["nombre"] or "No disponible").data_type = "s"
+        resumen.cell(indice, 17, grupo["total"])
+    resumen.column_dimensions.group("N", "Q", hidden=True)
+
+    def datos_grafico(grafico, columna_texto, cantidad):
+        categorias = Reference(resumen, min_col=columna_texto, min_row=1, max_row=cantidad)
+        totales = Reference(resumen, min_col=columna_texto + 1, min_row=1, max_row=cantidad)
+        grafico.add_data(totales)
+        serie = grafico.series[0]
+        serie.cat = AxDataSource(strRef=StrRef(f=str(categorias), strCache=StrData(
+            ptCount=cantidad, pt=[StrVal(idx=i, v=resumen.cell(i + 1, columna_texto).value) for i in range(cantidad)],
+        )))
+        serie.val.numRef.numCache = NumData(ptCount=cantidad,
+            pt=[NumVal(idx=i, v=resumen.cell(i + 1, columna_texto + 1).value) for i in range(cantidad)])
+        grafico.visible_cells_only = False
+        grafico.width, grafico.height = 13, 6.2
+
+    if total:
+        dona = DoughnutChart()
+        dona.title = f"Distribución por estado · {total} incidencias"
+        dona.holeSize = 63
+        datos_grafico(dona, 14, len(estados))
+        for indice, (_, _, _, _, color) in enumerate(estados):
+            punto = DataPoint(idx=indice)
+            punto.graphicalProperties.solidFill = color
+            dona.series[0].data_points.append(punto)
+        dona.dataLabels = DataLabelList(showPercent=True, dLblPos="bestFit")
+        resumen.add_chart(dona, "A10")
+    else:
+        bloque(resumen, "A10:E10", "Distribución por estado", claro, negrita=True)
+        bloque(resumen, "A11:E11", "Sin incidencias para el período", "F4F8FC")
+    if principales:
+        barras = BarChart()
+        barras.type = "bar"
+        barras.title = "Incidencias por responsable" if len(responsables) <= len(principales) else "Incidencias por responsable · 5 principales"
+        barras.legend = None
+        barras.x_axis.scaling.orientation = "maxMin"
+        barras.y_axis.scaling.min = 0
+        datos_grafico(barras, 16, len(principales))
+        barras.series[0].graphicalProperties.solidFill = "2778C4"
+        barras.dataLabels = DataLabelList(showVal=True, dLblPos="outEnd")
+        resumen.add_chart(barras, "G10")
+    else:
+        bloque(resumen, "G10:K10", "Incidencias por responsable", claro, negrita=True)
+        bloque(resumen, "G11:K11", "Sin registros para el período", "F4F8FC")
+
+    def desglose(fila, columnas, titulo, grupos):
+        nombre, fin_nombre, cantidad, porcentaje = columnas
+        bloque(resumen, f"{nombre}{fila}:{porcentaje}{fila}", titulo, negrita=True, tamano=12)
+        for i, registro in enumerate([("Categoría", "Total", "Porcentaje"),
+                *((grupo["nombre"] or "No disponible", grupo["total"], grupo["total"] / total if total else 0)
+                  for grupo in grupos),
+                ("Total", sum(grupo["total"] for grupo in grupos), sum(grupo["total"] for grupo in grupos) / total if total else 0)]):
+            r = fila + i + 1
+            destacado = i in (0, len(grupos) + 1)
+            fondo = claro if destacado else ("F0F6FC" if i % 2 == 0 else blanco)
+            bloque(resumen, f"{nombre}{r}:{fin_nombre}{r}", registro[0], fondo, negrita=destacado)
+            for col, valor in zip((cantidad, porcentaje), registro[1:]):
+                celda = resumen[f"{col}{r}"]
+                celda.value = valor
+                estilo(celda, fondo, negrita=destacado, centrado=True)
+            if i:
+                resumen[f"{porcentaje}{r}"].number_format = "0%"
+            resumen.row_dimensions[r].height = 22
+        return r
+
+    fin = max(
+        desglose(23, "ACDE", "Distribución por área municipal", datos["desgloses"]["areas"]),
+        desglose(23, "GIJK", "Distribución por prioridad oficial", datos["desgloses"]["prioridades"]),
+    )
+    bloque(resumen, f"A{fin + 2}:K{fin + 2}",
+           "Alcance: estados vigentes de las incidencias registradas en el período y prioridad oficial.", claro)
+    if len(responsables) > len(principales):
+        desglose(fin + 4, "ACDE", "Responsable actual o de cierre", responsables)
+
+    cabecera(filtros, "K", "CRITERIOS DE CONSULTA DEL REPORTE", "Parámetros utilizados para generar la información exportada.")
+    filtros_aplicados = {"Fecha de registro": periodo}
+    filtros_aplicados.update((clave, valor) for clave, valor in datos["filtros_aplicados"].items() if clave != "Fecha de registro")
+    metadatos = {"Fecha de generación": fecha, "Zona horaria": "America/Lima",
+                 "Registros exportados": len(datos["incidencias"]), "Módulo": "Reportes institucionales"}
+    for titulo, columnas, valores in (("Filtros aplicados", "ACDE", filtros_aplicados),
+                                      ("Información de exportación", "GHIK", metadatos)):
+        inicio, fin_etiqueta, inicio_valor, ultima = columnas
+        bloque(filtros, f"{inicio}7:{ultima}7", titulo, azul, color=blanco, negrita=True, tamano=12)
+        for fila, (etiqueta, valor) in enumerate(valores.items(), 8):
+            filtros.row_dimensions[fila].height = 33
+            bloque(filtros, f"{inicio}{fila}:{fin_etiqueta}{fila}", etiqueta, claro, negrita=True)
+            bloque(filtros, f"{inicio_valor}{fila}:{ultima}{fila}", valor, "F4F8FC")
+    nota = 9 + max(len(filtros_aplicados), len(metadatos))
+    bloque(filtros, f"A{nota}:K{nota}", "Los datos corresponden a los criterios seleccionados al generar el reporte.", claro)
+    filtros.row_dimensions[nota].height = 24
+
+    cabecera(incidencias, "H", "REGISTRO DETALLADO DE INCIDENCIAS", f"Período: {periodo}   ·   Total de registros: {len(datos['incidencias'])}", "B")
+    encabezados = ["N.º", "Código", "Asunto", "Área municipal", "Fecha de registro", "Prioridad oficial", "Estado", "Responsable"]
+    for indice, (etiqueta, ancho) in enumerate(zip(encabezados, (8, 23, 43, 25, 23, 32, 18, 39)), 1):
+        incidencias.column_dimensions[get_column_letter(indice)].width = ancho
+        estilo(incidencias.cell(7, indice, etiqueta), azul, color=blanco, negrita=True, centrado=True)
+    incidencias.row_dimensions[7].height = 24
+    colores_estado = {nombre: (fondo, color) for nombre, _, fondo, color, _ in estados}
+    colores_estado["Pendiente"] = colores_estado["Pendientes"]
+    colores_estado["Cerrado"] = colores_estado["Cerradas"]
+    for numero, fila in enumerate(datos["incidencias"], 1):
+        fila_excel = numero + 7
+        fondo = "EEF5FC" if numero % 2 == 0 else blanco
+        valores = valores_fila(fila)
+        for columna, valor in enumerate([numero, *valores], 1):
+            fondo_celda, color = colores_estado.get(valor, (fondo, tinta)) if columna == 7 else (fondo, tinta)
+            estilo(incidencias.cell(fila_excel, columna, valor), fondo_celda, color=color,
+                   negrita=columna in (2, 7), centrado=columna in (1, 5, 7))
+        incidencias.cell(fila_excel, 5).number_format = "dd/mm/yyyy hh:mm"
+        lineas = max(sum(max(1, len(wrap(parte, ancho))) for parte in valor.split("\n"))
+                     for valor, ancho in zip(valores, (20, 39, 22, 20, 28, 16, 34)) if isinstance(valor, str))
+        incidencias.row_dimensions[fila_excel].height = min(409, max(22, lineas * 16 + 4))
+    incidencias.sheet_format.defaultRowHeight = 22
+    incidencias.freeze_panes = "A8"
+    incidencias.auto_filter.ref = f"A7:H{incidencias.max_row}"
     salida = BytesIO()
     try:
         libro.save(salida)
