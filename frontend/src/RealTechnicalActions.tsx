@@ -141,14 +141,14 @@ export default function RealTechnicalActions({ token, ticketId, onActualizada }:
       <div className="incident-detail-work-title">
         <h3><Icon name="sidebar-wrench" />Atención técnica y cierre</h3>
         {contexto && <strong style={{ fontSize: 12, color: "#235da0" }}>
-          Ciclo {contexto.ciclo_actual} · {contexto.ciclo_actual > 1 ? "V4" : "V3"}
+          Ciclo {contexto.ciclo_actual}
         </strong>}
       </div>
       {cargando && <p role="status">Comprobando permisos y ciclo...</p>}
       {error && <p role="alert" style={{ color: "#a32929" }}>{error}</p>}
       {exito && <p role="status" style={{ color: "#176a46" }}>{exito}</p>}
-      {!escrituraHabilitada && <p style={{ color: "#79591a", fontSize: 13, margin: 0 }}>
-        Acciones de escritura deshabilitadas. Solo habilitar en entorno de pruebas autorizado.
+      {!escrituraHabilitada && (contexto?.puede_intervenir || contexto?.puede_cerrar) && <p style={{ color: "#79591a", fontSize: 13, margin: 0 }}>
+        El registro de atenciones y cierres no está disponible en este momento.
       </p>}
       {contexto && !contexto.es_responsable && <p style={{ color: "#57677d", margin: 0 }}>
         Este ticket no está asignado a tu usuario en el ciclo vigente.

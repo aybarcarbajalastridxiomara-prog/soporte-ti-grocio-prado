@@ -218,7 +218,7 @@ export default function RealTicketDetail({ token, ticket, rol, onVolver }: Props
 
       {error && (
         <div role="alert" style={{ ...panel, borderColor: "#f4b8b8", background: "#fff7f7", color: "#a32626" }}>
-          {error} {usarCiclosV4 && "Si la migración V4 no está habilitada, desactiva VITE_CONSULTA_CICLOS_V4."}
+          {error}
         </div>
       )}
       {cargando && <div style={panel} role="status">Consultando información de la incidencia...</div>}

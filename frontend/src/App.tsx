@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import "./index.css"
+import { VerIncidencia } from "./RealUI"
 
 type Profile = "systems" | "assistant" | "intern" | "area"
 type Status = "Pendiente" | "En revisión" | "Cerrado"
@@ -890,12 +891,7 @@ function TicketTable({
               <td>{t.tech}</td>
               <td>
                 {action?.(t) || (
-                  <button
-                    className="row-action"
-                    onClick={() => go?.("detail", t.id)}
-                  >
-                    Ver <Icon name="arrow" />
-                  </button>
+                  <VerIncidencia codigo={t.code} abrir={() => go?.("detail", t.id)} />
                 )}
               </td>
             </tr>

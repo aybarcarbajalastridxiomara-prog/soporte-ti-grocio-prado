@@ -44,6 +44,13 @@ export function Badge({ children }: { children: string }) {
   return <span className={`badge ${color}`}>{children}</span>
 }
 
+export function VerIncidencia({ codigo, abrir }: { codigo: string; abrir: () => void }) {
+  const etiqueta = `Ver detalle de ${codigo}`
+  return <button type="button" className="row-action incident-view-action" aria-label={etiqueta} title={etiqueta} onClick={abrir}>
+    <Icon name="login-eye" />
+  </button>
+}
+
 export function BannerInstitucional({ titulo, descripcion, icono }: { titulo: string; descripcion: string; icono: string }) {
   return <section className="real-shell-greeting incident-hero">
     <div><h2>{titulo}</h2><p>{descripcion}</p></div>

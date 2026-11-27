@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react"
 import type { IncidenciaReal, Rol } from "./api"
-import { Badge, Icon } from "./RealUI"
+import { Badge, Icon, VerIncidencia } from "./RealUI"
 
 export const fechaRegistro = (valor: string) => new Date(valor).toLocaleString("es-PE", {
   day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Lima",
@@ -144,7 +144,7 @@ export default function RealTicketList({ incidencias, cargando, disponible, actu
               Prioridad: <><span data-prioridad={expandida ? prioridadDe(ticket) : undefined}><Badge>{prioridadDe(ticket)}</Badge></span>{!ticket.prioridad && ticket.prioridad_revision_pendiente && <small className="cell-caption">Provisional · revisión JEFE</small>}</>,
               Estado: <span className={expandida && ticket.estado === "En revisión" ? "incident-in-review" : undefined}><Badge>{ticket.estado}</Badge></span>,
               Responsable: <><span className="incident-owner">{expandida && <span className="incident-owner-avatar" aria-hidden="true">{iniciales || <Icon name="users" />}</span>}{nombre}</span>{ticket.responsable_tipo === "cierre" && <small className="cell-caption">Cerrado por</small>}</>,
-              Acciones: <button className="row-action" aria-label={"Ver detalle de " + ticket.codigo} onClick={() => abrirDetalle(ticket)}>{expandida && <Icon name="login-eye" />}Ver<Icon name="arrow" /></button>,
+              Acciones: <VerIncidencia codigo={ticket.codigo} abrir={() => abrirDetalle(ticket)} />,
             }
             const fila: Record<Columna, ReactNode> = {
               ...celdas,
