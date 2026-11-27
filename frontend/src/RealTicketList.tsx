@@ -24,7 +24,8 @@ const porPagina = 5
 
 type Filtros = typeof filtrosIniciales
 type Ordenable = "Código" | "Registro" | "Asignación"
-type Columna = Ordenable | "Asunto" | "Área" | "Prioridad" | "Estado" | "Responsable" | "Tiempo de atención" | "Acciones"
+type Columna = Ordenable | "Asunto" | "Área" | "Prioridad" | "Estado" | "Responsable" | "Tiempo de atención" | "Acciones" | "Incidencia" | "Contexto" | "Seguimiento"
+const columnasRecientes: Columna[] = ["Incidencia", "Contexto", "Seguimiento", "Registro", "Acciones"]
 const columnasCompactas: Columna[] = ["Código", "Asunto", "Área", "Registro", "Prioridad", "Estado", "Responsable", "Acciones"]
 const columnasExpandidas: Columna[] = ["Código", "Asunto", "Área", "Responsable", "Prioridad", "Estado", "Registro", "Acciones"]
 const columnasAtenciones: Columna[] = ["Código", "Asunto", "Área", "Prioridad", "Estado", "Asignación", "Tiempo de atención", "Acciones"]
@@ -83,7 +84,8 @@ export default function RealTicketList({ incidencias, cargando, disponible, actu
   const paginaActual = Math.min(totalPaginas, pagina)
   const inicio = expandida ? (paginaActual - 1) * porPagina : 0
   const visibles = expandida ? filtradas.slice(inicio, inicio + porPagina) : limiteVisible ? filtradas.slice(0, limiteVisible) : filtradas
-  const columnas = atenciones ? columnasAtenciones : expandida ? columnasExpandidas : columnasCompactas
+  const recientes = !expandida && limiteVisible !== undefined
+  const columnas = atenciones ? columnasAtenciones : expandida ? columnasExpandidas : recientes ? columnasRecientes : columnasCompactas
   const areas = new Map(incidencias.filter(t => t.area_nombre).map(t => [t.area_id, t.area_nombre]))
   const responsables = new Map(incidencias.filter(t => responsableDe(t)).map(t => [responsableDe(t), nombreResponsable(t)]))
   const prioridades = [...new Set(incidencias.map(prioridadVisible))].sort((a, b) => a.localeCompare(b, "es"))
@@ -127,12 +129,12 @@ export default function RealTicketList({ incidencias, cargando, disponible, actu
         {asignaciones && <select aria-label="Filtrar por responsable" value={borrador.responsable} onChange={e => cambiar("responsable", e.target.value)}><option value="">Todos los responsables</option>{[...responsables].map(([id, nombre]) => <option value={id} key={id}>{nombre}</option>)}</select>}
       </div>}
       {!disponible ? <div className="empty" role="status"><Icon name="clipboard" /><h3>{cargando ? "Consultando incidencias…" : "Listado no disponible"}</h3><p>{cargando ? "Obteniendo los registros autorizados para tu perfil." : "Actualiza para reintentar la consulta."}</p></div> : <><div className="table-wrap" tabIndex={0} role="region" aria-label={titulo}>
-        <table className="real-ticket-table"><thead><tr>{columnas.map(columna => expandida && (columna === "Código" || columna === "Registro" || columna === "Asignación") ?
+        <table className={recientes ? "real-ticket-table dashboard-recent-table" : "real-ticket-table"}><thead><tr>{columnas.map(columna => expandida && (columna === "Código" || columna === "Registro" || columna === "Asignación") ?
           <th scope="col" key={columna} aria-sort={orden.campo === columna ? orden.ascendente ? "ascending" : "descending" : "none"}><button type="button" className="incident-sort" onClick={() => ordenar(columna)}>{columna}<span aria-hidden="true">{orden.campo === columna ? orden.ascendente ? "↑" : "↓" : "↕"}</span></button></th> :
           <th scope="col" key={columna}>{columna}</th>)}</tr></thead><tbody>{visibles.map(ticket => {
             const nombre = nombreResponsable(ticket)
             const iniciales = ticket.responsable_nombre?.trim().split(/\s+/).slice(0, 2).map(parte => parte[0]).join("").toUpperCase()
-            const celdas: Record<Columna, ReactNode> = {
+            const celdas = {
               Código: <b className="code">{ticket.codigo}</b>,
               Asunto: <span className="incident-subject" title={ticket.asunto}>{expandida && <Icon name="login-ticket" />}{ticket.asunto}</span>,
               Área: ticket.area_nombre || "Área no disponible",
@@ -144,7 +146,13 @@ export default function RealTicketList({ incidencias, cargando, disponible, actu
               Responsable: <><span className="incident-owner">{expandida && <span className="incident-owner-avatar" aria-hidden="true">{iniciales || <Icon name="users" />}</span>}{nombre}</span>{ticket.responsable_tipo === "cierre" && <small className="cell-caption">Cerrado por</small>}</>,
               Acciones: <button className="row-action" aria-label={"Ver detalle de " + ticket.codigo} onClick={() => abrirDetalle(ticket)}>{expandida && <Icon name="login-eye" />}Ver<Icon name="arrow" /></button>,
             }
-            return <tr key={ticket.id}>{columnas.map(columna => <td key={columna}>{celdas[columna]}</td>)}</tr>
+            const fila: Record<Columna, ReactNode> = {
+              ...celdas,
+              Incidencia: <div className="dashboard-recent-cell">{celdas.Código}{celdas.Asunto}</div>,
+              Contexto: <div className="dashboard-recent-cell"><strong>{celdas.Área}</strong>{celdas.Responsable}</div>,
+              Seguimiento: <div className="dashboard-recent-cell">{celdas.Estado}{celdas.Prioridad}</div>,
+            }
+            return <tr key={ticket.id}>{columnas.map(columna => <td key={columna}>{fila[columna]}</td>)}</tr>
           })}</tbody></table>
       </div>{!visibles.length && <div className="empty" role="status"><Icon name="clipboard" /><h3>{filtrando ? "Sin coincidencias" : tituloVacio}</h3><p>{filtrando ? "Prueba otro filtro dentro de los registros cargados." : "Los registros disponibles para esta vista aparecerán aquí."}</p>{filtrando && <button className="outline" onClick={limpiar}>Limpiar filtros</button>}</div>}</>}
       <div className="pagination incident-pagination">{expandida ? <>

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react"
 import { consultarAdjuntosRegistro, listarIncidenciasReales, registrarIncidenciaReal, subirAdjuntoReal,
   type ConfiguracionAdjuntos, type IncidenciaReal, type PerfilReal } from "./api"
-import { Badge, Icon } from "./RealUI"
+import { BannerInstitucional, Icon } from "./RealUI"
 
 type Props = { token: string; perfil: PerfilReal; onCancelar: () => void; onCreada: (ticket: IncidenciaReal, verDetalle: boolean) => Promise<void> }
 const opcional = (v: string) => v.trim() || null
@@ -89,7 +89,7 @@ export default function RealRegister({ token, perfil, onCancelar, onCreada }: Pr
   }
   const volver = () => creada ? void onCreada(creada, true) : onCancelar()
   return <div className="real-register"><button className="back" onClick={volver} disabled={guardando}>{creada ? "‹ Ver incidencia registrada" : "‹ Cancelar y volver"}</button>
-    <div className="detail-header"><div><span className="register-header-icon"><Icon name="plus" /></span><div><h2>Registrar nueva incidencia</h2><p>Complete los datos para que Sistemas pueda evaluar el caso.</p></div></div><Badge>Nuevo registro</Badge></div>
+    <BannerInstitucional icono="document-add" titulo="Registrar nueva incidencia" descripcion="Completa los datos para que Sistemas pueda evaluar el caso." />
     <form className="register-form real-form" onSubmit={guardar}>
       <fieldset disabled={guardando || Boolean(creada)}><legend><span className="register-legend-title"><span className="register-section-icon"><Icon name="user" /></span>A. Información del solicitante</span></legend><div className="form-row form-row-three"><label>Área municipal<input value={perfil.area_nombre || "Área no disponible"} readOnly /></label><label>Reportante autorizado<input value={perfil.nombre_completo} readOnly /></label><label>Fecha y hora de registro<input value={creada ? new Date(creada.fecha_registro).toLocaleString("es-PE", { timeZone: "America/Lima" }) : "Se asignarán al registrar"} readOnly /></label></div><p className="help">El código y el estado inicial los asigna el servidor al guardar.</p></fieldset>
       <fieldset disabled={guardando || Boolean(creada)}><legend><span className="register-legend-title"><span className="register-section-icon"><Icon name="clipboard" /></span>B. Descripción de la incidencia</span></legend><label>Asunto de la incidencia *<input required maxLength={200} value={asunto} onChange={e => setAsunto(e.target.value)} /></label><label>Descripción detallada *<textarea required rows={5} value={descripcion} onChange={e => setDescripcion(e.target.value)} /></label>

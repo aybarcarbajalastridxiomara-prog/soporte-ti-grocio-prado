@@ -448,13 +448,20 @@
 .real-dashboard-plot i b { position: absolute; left: 50%; bottom: 100%; translate: -50% -2px; color: #194069; font-size: 9px; font-style: normal; }
 .real-dashboard-trend ul { display: flex; justify-content: space-between; margin-inline: -6px; padding-top: 5px; color: #496280; font-size: 10px; }
 
-.real-dashboard-bottom { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 12px; }
-.real-dashboard-side { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(225px,100%),1fr)); gap: 12px; min-width: 0; }
+.real-dashboard-bottom { display: grid; grid-template-columns: minmax(0, 2.5fr) minmax(190px, 1fr); align-items: start; gap: 12px; }
+.real-dashboard-side { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
 .real-dashboard-bottom > .table-card { min-width: 0; }
-.real-main-dashboard .real-dashboard-bottom .real-ticket-table { min-width: 845px; table-layout: auto; }
+.real-app .real-dashboard-bottom .dashboard-recent-table { min-width: 540px; table-layout: auto; }
 .real-dashboard-bottom .real-ticket-table :is(th, td) { padding: 10px; }
 .real-dashboard-bottom .real-ticket-table :is(.code, .badge, .row-action) { white-space: nowrap; }
-.real-dashboard-bottom .real-ticket-table td:nth-child(7) { white-space: normal; overflow-wrap: anywhere; }
+.real-app .real-dashboard-bottom .dashboard-recent-table td { min-width: 0; }
+.dashboard-recent-table td:nth-child(-n+2) { width: 25%; }
+.dashboard-recent-cell { display: grid; justify-items: start; gap: 4px; white-space: normal; overflow-wrap: anywhere; }
+.dashboard-recent-cell .incident-owner { display: block; }
+.real-register > .real-shell-greeting { margin-bottom: 14px; }
+@media (max-width: 1100px) and (min-width: 901px), (max-width: 770px) {
+  .real-dashboard-bottom { grid-template-columns: minmax(0, 1fr); }
+}
 .real-dashboard-bottom .row-action { padding-inline: 5px; flex-wrap: nowrap; }
 .real-dashboard-bottom .row-action .icon { width: 13px; }
 .real-dashboard-followup > .real-dashboard-ring { margin: 8px auto; }

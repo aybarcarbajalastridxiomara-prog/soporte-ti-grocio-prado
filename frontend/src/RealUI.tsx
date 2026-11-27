@@ -12,6 +12,7 @@ export function Icon({ name }: { name: string }) {
     filter: "M3 4h18l-7 8v6l-4 2v-8z",
     bell: "M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21a2 2 0 0 0 4 0",
     paperclip: "m9 15 7-7a3 3 0 0 0-4-4l-8 8a5 5 0 0 0 7 7l8-8m-2-5-8 8a1 1 0 0 0 2 2l7-7",
+    "document-add": "M6 3h8l4 4v14H6zM14 3v5h4M12 11v7m-3.5-3.5h7",
     plus: "M12 5v14M5 12h14",
     arrow: "m9 18 6-6-6-6",
     check: "m5 12 4 4L19 6",
