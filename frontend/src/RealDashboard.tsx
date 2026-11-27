@@ -85,10 +85,13 @@ export default function RealDashboard({ vista, perfil, incidencias, resumen, car
     {representante && <button className="primary" onClick={() => navegar("registro")}><Icon name="plus" />Registrar incidencia</button>}
   </div>
 
-  if (vista !== "dashboard") return <>
-    <div className="welcome"><div><h2>{representante ? "Incidencias de mi área" : "Listado general de incidencias"}</h2><p>{representante ? "Revise y registre las incidencias de su área." : "Seguimiento consolidado de incidencias municipales."}</p></div>{acciones}</div>
-    <RealTicketList incidencias={incidencias} cargando={cargando} disponible={Boolean(actualizado)} actualizado={actualizado} titulo="Incidencias registradas" abrirDetalle={abrirDetalle} />
-  </>
+  if (vista !== "dashboard") return <div className="incident-directory">
+    <div className="real-shell-greeting incident-hero">
+      <div><h2>{representante ? "Incidencias de mi área" : "Listado de incidencias"}</h2><p>{representante ? "Consulta y da seguimiento a las solicitudes registradas en tu área." : "Consulta, filtra y da seguimiento a las incidencias registradas."}</p></div>
+      <div className="real-dashboard-banner-art" aria-hidden="true"><span className="real-access-laptop"><Icon name="login-headset" /></span></div>
+    </div>
+    <RealTicketList expandida incidencias={incidencias} cargando={cargando} disponible={Boolean(actualizado)} actualizado={actualizado} titulo="Incidencias registradas" accion={acciones} abrirDetalle={abrirDetalle} />
+  </div>
 
   const basePanel = tecnico ? incidencias.filter(t => t.responsable_id === perfil.id &&
     (t.responsable_tipo === "activo" || (practicante && t.responsable_tipo === "cierre"))) : incidencias

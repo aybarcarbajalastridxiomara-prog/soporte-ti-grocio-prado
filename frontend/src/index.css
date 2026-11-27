@@ -1058,3 +1058,87 @@
   .real-app .account-preference { grid-template-columns: 1fr; }
   .real-app .account-theme { width: fit-content; }
 }
+
+/* Listado principal de incidencias */
+.real-app .incident-directory { display: grid; min-width: 0; gap: 14px; }
+.real-app .incident-hero > div:first-child { border-left: 4px solid #1470ca; padding-left: 14px; }
+.real-app .incident-filters { padding: 14px 18px 17px; border-color: #d5e3f5; }
+.real-app .incident-filters h3,
+.real-app .incident-directory .section-head h3 { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0 0 4px; font-size: 1.03rem; font-weight: 700; }
+.real-app .incident-filters h3 > .icon,
+.real-app .incident-directory .section-head h3 > .icon { width: 21px; height: 21px; color: #1763ad; }
+.real-app .incident-filter-grid {
+  display: grid;
+  align-items: end;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(215px, 1.15fr);
+  gap: 10px 13px;
+}
+.real-app .incident-filter-grid label { display: grid; min-width: 0; gap: 4px; font-weight: 600; font-size: .82rem; }
+.real-app .incident-filter-grid label > span { display: flex; align-items: center; gap: 6px; }
+.real-app .incident-filter-grid label .icon { width: 15px; height: 15px; color: #335d88; flex-shrink: 0; }
+.real-app .incident-search-label { grid-column: span 2; }
+.real-app .incident-filter-grid :is(select, .incident-search) {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid #adc5e1;
+  border-radius: 8px;
+  background: #fff;
+}
+.real-app .incident-search input {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+}
+.real-app .incident-search:focus-within { outline: 2px solid #1764a6; outline-offset: 2px; }
+.real-app .incident-filter-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.real-app .incident-filter-actions button { min-height: 40px; padding-inline: 9px; font-size: .8rem; white-space: nowrap; }
+.real-app .incident-filter-actions button .icon { width: 15px; height: 15px; }
+.real-app .incident-directory .table-card { border-color: #d5e3f5; }
+.real-app .incident-directory .section-head { flex-wrap: wrap; align-items: center; gap: 8px; }
+.real-app .incident-count { padding: 4px 8px; background: #e2efff; color: #0756a0; border-radius: 20px; font-size: .72rem; }
+.real-app .incident-directory .real-ticket-table { min-width: 825px; }
+.real-app .incident-directory .real-ticket-table th { background: #e8f0fb; }
+.real-app .incident-directory .real-ticket-table :is(th, td) { padding: 8px 10px; }
+.real-app .incident-directory .real-ticket-table td:nth-child(2) { min-width: 155px; white-space: normal; }
+.real-app .incident-directory .real-ticket-table td:nth-child(3) { min-width: 90px; }
+.real-app .incident-directory .real-ticket-table tbody tr:nth-child(even) td { background: #f8fbff; }
+.real-app .incident-directory .incident-sort { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: inherit; font: inherit; }
+.real-app .incident-directory :is(.incident-subject, .incident-owner) { display: inline-flex; align-items: center; gap: 6px; }
+.real-app .incident-directory .incident-subject .icon { flex: 0 0 15px; height: 15px; color: #225788; }
+.real-app .incident-owner-avatar { display: inline-grid; flex: 0 0 25px; place-items: center; height: 25px; border-radius: 50%; background: #deecfb; color: #1c5590; font-size: .67rem; font-weight: 700; }
+.real-app .incident-owner-avatar .icon { width: 13px; height: 13px; }
+.real-app .incident-in-review .badge { background: #eee8ff; color: #593ac0; }
+.real-app .incident-directory [data-prioridad="Media"] .badge { background: #fff1d9; color: #815000; }
+.real-app .incident-directory [data-prioridad="Baja"] .badge { background: #e0f5e9; color: #126745; }
+.real-app .incident-directory .incident-pagination { flex-wrap: wrap; gap: 8px; }
+.real-app .incident-pagination .real-actions { flex-wrap: wrap; gap: 5px; }
+.real-app .incident-pagination button { min-width: 32px; padding-inline: 8px; }
+.real-app .incident-pagination button[aria-current="page"] { background: #0f64b5; border-color: #0f64b5; color: #fff; }
+.real-app[data-tema="oscuro"] .incident-hero { background: var(--form-hero); color: var(--form-ink); }
+.real-app[data-tema="oscuro"] .incident-hero p { color: var(--form-muted); }
+.real-app[data-tema="oscuro"] .incident-filter-grid :is(select, .incident-search) { background: #172d46; border-color: #526e8b; }
+.real-app[data-tema="oscuro"] .incident-directory .real-ticket-table th { background: #203a54; }
+.real-app[data-tema="oscuro"] .incident-directory .real-ticket-table tbody tr:nth-child(even) td { background: #192c43; }
+
+@media (max-width: 1180px) {
+  .real-app .incident-filter-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .real-app .incident-filter-actions { grid-column: 1 / -1; }
+}
+@media (max-width: 740px) {
+  .real-app .incident-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 440px) {
+  .real-app .incident-filter-grid { grid-template-columns: minmax(0, 1fr); }
+  .real-app .incident-search-label { grid-column: auto; }
+  .real-app .incident-filter-actions { justify-content: stretch; }
+  .real-app .incident-filter-actions button { flex: 1; }
+}

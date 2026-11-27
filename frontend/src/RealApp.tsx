@@ -322,7 +322,7 @@ export default function RealApp() {
         <header className="topbar real-topbar">
           <button ref={botonMenu} className="menu-button" aria-label={menu ? "Cerrar menú" : "Abrir menú"} aria-expanded={menu} aria-controls="menu-principal" onClick={() => setMenu(!menu)}>☰</button>
           <div className="real-topbar-title">
-            <Icon name="shell-home" />
+            <Icon name={vista === "incidencias" ? "login-ticket" : "shell-home"} />
             <div><p className="breadcrumb">Sistema de Gestión de Incidencias</p><h1>{ticketSeleccionado ? "Detalle de incidencia" : titulos[vista]}</h1></div>
           </div>
           <div className="top-actions"><span className="connection-label"><i />Acceso institucional</span><button className="avatar avatar-button" aria-label="Abrir mi cuenta" onClick={() => navegar("cuenta")}>{iniciales}</button></div>
